@@ -11,10 +11,7 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugins(MaterialPlugin::<WaterMaterial>::default())
-        .add_plugins(WaveSimulationPlugin)
         .add_systems(Startup, (setup, setup_wave_textures, setup_water_material).chain())
-        .add_systems(Update, (handle_mouse_input, log_wave_simulation_status, update_water_material))
-        .add_systems(PostUpdate, clear_wave_input)
         .run();
 }
 
@@ -169,44 +166,12 @@ fn create_subdivided_plane(width_subdivisions: u32, height_subdivisions: u32, si
     .with_inserted_indices(bevy::render::mesh::Indices::U32(indices))
 }
 
-#[derive(Resource, Clone, ExtractResource, ShaderType)]
-struct WaveSimulationParams {
-    dampening: f32,
-    input_x: f32,
-    input_y: f32,
-    input_size: f32,
-    min_input_size: f32,
-    got_input: f32,
-    input_push: f32,
-    resolution: Vec2,
-    frame_counter: f32, // For debugging timing
-}
-
-impl Default for WaveSimulationParams {
-    fn default() -> Self {
-        Self {
-            dampening: 0.99,
-            input_x: 0.0,
-            input_y: 0.0,
-            input_size: 20.0,
-            min_input_size: 5.0,
-            got_input: 0.0,
-            input_push: 0.0,
-            resolution: Vec2::new(512.0, 512.0),
-            frame_counter: 0.0,
-        }
-    }
-}
-
-
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
 struct WaveComputeShader {
     #[storage_texture(0, image_format = Rg32Float, access = ReadWrite)]
     texture_a: Handle<Image>,
     #[storage_texture(1, image_format = Rg32Float, access = ReadWrite)]
-    texture_b: Handle<Image>,
-    #[uniform(2)]
-    params: WaveSimulationParams,
+    texture_b: Handle<Image>
 }
 
 #[derive(Resource, Clone, ExtractResource)]
@@ -255,87 +220,6 @@ impl Default for WaterMaterial {
             },
             wave_texture: Handle::default(),
         }
-    }
-}
-
-struct WaveSimulationPlugin;
-
-impl Plugin for WaveSimulationPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_asset::<WaveComputeShader>()
-            .init_resource::<WaveSimulationParams>()
-            .add_plugins(ExtractResourcePlugin::<WaveSimulationParams>::default())
-            .add_plugins(ExtractResourcePlugin::<WaveTextures>::default());
-
-        let render_app = app.sub_app_mut(RenderApp);
-        render_app
-            .add_systems(Render, queue_wave_simulation.in_set(RenderSet::Queue));
-    }
-
-    fn finish(&self, app: &mut App) {
-        let render_app = app.sub_app_mut(RenderApp);
-        let mut render_graph = render_app.world_mut().resource_mut::<RenderGraph>();
-        render_graph.add_node(WaveSimulationLabel, WaveSimulationNode::default());
-        render_graph.add_node_edge(WaveSimulationLabel, bevy::render::graph::CameraDriverLabel);
-    }
-}
-
-#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
-struct WaveSimulationLabel;
-
-#[derive(Default)]
-struct WaveSimulationNode {
-    initialized: std::sync::atomic::AtomicBool,
-}
-
-impl render_graph::Node for WaveSimulationNode {
-    fn run(
-        &self,
-        _graph: &mut render_graph::RenderGraphContext,
-        _render_context: &mut RenderContext,
-        world: &bevy::ecs::world::World,
-    ) -> Result<(), render_graph::NodeRunError> {
-        // Log when first initialized
-        use std::sync::atomic::Ordering;
-        if !self.initialized.load(Ordering::Relaxed) {
-            info!("Wave simulation render node initialized");
-            self.initialized.store(true, Ordering::Relaxed);
-        }
-        
-        // Check if resources exist and debug extraction
-        let Some(wave_textures) = world.get_resource::<WaveTextures>() else {
-            trace!("WaveTextures resource not found in render world");
-            return Ok(());
-        };
-        
-        let Some(params) = world.get_resource::<WaveSimulationParams>() else {
-            trace!("WaveSimulationParams resource not found in render world");
-            return Ok(());
-        };
-        
-        let Some(gpu_images) = world.get_resource::<bevy::render::render_asset::RenderAssets<bevy::render::texture::GpuImage>>() else {
-            trace!("GpuImage RenderAssets not found in render world");
-            return Ok(());
-        };
-        
-        // Debug: Always log current input state
-        trace!("Wave simulation render node: got_input={:.1}, input=({:.3}, {:.3}), frame={:.0}", 
-            params.got_input, params.input_x, params.input_y, params.frame_counter);
-        
-        // For now, just log when we have input and try basic texture update
-        if params.got_input > 0.5 {
-            info!("Wave simulation processing input at UV ({:.3}, {:.3})", 
-                params.input_x, params.input_y);
-                
-            // Get the current textures
-            if let Some(texture_a) = gpu_images.get(&wave_textures.texture_a) {
-                // TODO: Simple test - clear texture to test if we can modify it
-                // This is a placeholder for actual compute shader dispatch
-                info!("Wave texture A found: {:?}", texture_a.texture.size());
-            }
-        }
-        
-        Ok(())
     }
 }
 
@@ -415,42 +299,11 @@ fn setup_water_material(
     }
 }
 
-fn log_wave_simulation_status(
-    time: Res<Time>,
-    wave_textures: Option<Res<WaveTextures>>,
-    params: Option<Res<WaveSimulationParams>>,
-) {
-    // Log every 2 seconds
-    let elapsed = time.elapsed_secs();
-    if (elapsed as u32) % 2 == 0 && (elapsed * 10.0) as u32 % 10 == 0 {
-        if let (Some(textures), Some(params)) = (wave_textures, params) {
-            info!("Wave simulation status - Time: {:.1}s, Dampening: {}, Current buffer: {}",
-                elapsed, params.dampening, if textures.current_texture { "B" } else { "A" });
-        } else {
-            warn!("Wave simulation resources not found at {:.1}s", elapsed);
-        }
-    }
-}
-
-
-fn queue_wave_simulation(
-    wave_textures: Res<WaveTextures>,
-    _params: Res<WaveSimulationParams>,
-) {
-    // Log that we're queuing wave simulation
-    trace!("Queuing wave simulation - current buffer: {}", 
-        if wave_textures.current_texture { "B" } else { "A" });
-    
-    // TODO: Implement actual compute dispatch
-    // For now, keeping as stub while working on the infrastructure
-}
-
 fn handle_mouse_input(
     mouse_button: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     cameras: Query<(&Camera, &GlobalTransform)>,
-    _water_planes: Query<&Transform, With<Name>>,
-    mut wave_params: ResMut<WaveSimulationParams>,
+    _water_planes: Query<&Transform, With<Name>>
 ) {
     // Check for left mouse click
     if !mouse_button.just_pressed(MouseButton::Left) {
@@ -500,25 +353,9 @@ fn handle_mouse_input(
     // Clamp to valid UV range
     let uv_x = uv_x.clamp(0.0, 1.0);
     let uv_y = uv_y.clamp(0.0, 1.0);
-    
-    // Update wave parameters
-    wave_params.input_x = uv_x;
-    wave_params.input_y = uv_y;
-    wave_params.got_input = 1.0;
-    wave_params.input_push = 0.0; // 0 = push down (create wave), 1 = push up
-    wave_params.frame_counter += 1.0;
-    
+        
     info!("Mouse click at world ({:.2}, {:.2}, {:.2}) -> UV ({:.3}, {:.3})", 
         world_pos.x, world_pos.y, world_pos.z, uv_x, uv_y);
-}
-
-fn clear_wave_input(
-    mut wave_params: ResMut<WaveSimulationParams>,
-) {
-    // Clear input after one frame
-    if wave_params.got_input > 0.5 {
-        wave_params.got_input = 0.0;
-    }
 }
 
 fn update_water_material(
