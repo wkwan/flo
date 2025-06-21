@@ -11,7 +11,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(WaveSimulationPlugin)
         .add_systems(Startup, (setup, setup_wave_textures).chain())
-        .add_systems(Update, log_wave_simulation_status)
+        .add_systems(Update, (handle_mouse_input, clear_wave_input, log_wave_simulation_status).chain())
         .run();
 }
 
@@ -64,6 +64,7 @@ fn setup(
     // Water plane - subdivided quad for wave displacement (centered at origin)
     let water_mesh = create_subdivided_plane(64, 64, 8.0);
     commands.spawn((
+        Name::new("WaterPlane"),
         Mesh3d(meshes.add(water_mesh)),
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Color::srgba(0.1, 0.3, 0.8, 0.8),
@@ -328,12 +329,28 @@ impl render_graph::Node for WaveSimulationNode {
             self.initialized.store(true, Ordering::Relaxed);
         }
         
-        // Check if resources exist
-        if let Some(wave_textures) = world.get_resource::<WaveTextures>() {
-            if let Some(params) = world.get_resource::<WaveSimulationParams>() {
-                trace!("Wave simulation running - dampening: {}, resolution: {:?}", 
-                    params.dampening, params.resolution);
-            }
+        // Check if resources exist and run compute shader
+        let Some(_wave_textures) = world.get_resource::<WaveTextures>() else {
+            return Ok(());
+        };
+        
+        let Some(params) = world.get_resource::<WaveSimulationParams>() else {
+            return Ok(());
+        };
+        
+        let Some(_pipeline_cache) = world.get_resource::<PipelineCache>() else {
+            return Ok(());
+        };
+        
+        let Some(_render_device) = world.get_resource::<RenderDevice>() else {
+            return Ok(());
+        };
+        
+        // TODO: Create compute pipeline and dispatch
+        // For now, just log when we have input
+        if params.got_input > 0.5 {
+            trace!("Wave simulation would dispatch at UV ({:.3}, {:.3})", 
+                params.input_x, params.input_y);
         }
         
         Ok(())
@@ -412,9 +429,84 @@ fn log_wave_simulation_status(
 
 fn queue_wave_simulation(
     wave_textures: Res<WaveTextures>,
-    params: Res<WaveSimulationParams>,
+    _params: Res<WaveSimulationParams>,
 ) {
     // Log that we're queuing wave simulation
     trace!("Queuing wave simulation - current buffer: {}", 
         if wave_textures.current_texture { "B" } else { "A" });
+}
+
+fn handle_mouse_input(
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window>,
+    cameras: Query<(&Camera, &GlobalTransform)>,
+    water_planes: Query<&Transform, With<Name>>,
+    mut wave_params: ResMut<WaveSimulationParams>,
+) {
+    // Check for left mouse click
+    if !mouse_button.just_pressed(MouseButton::Left) {
+        return;
+    }
+
+    // Get the primary window
+    let Ok(window) = windows.single() else {
+        return;
+    };
+
+    // Get cursor position
+    let Some(cursor_position) = window.cursor_position() else {
+        return;
+    };
+
+    // Get camera
+    let Ok((camera, camera_transform)) = cameras.single() else {
+        return;
+    };
+
+    // Calculate ray from camera through cursor
+    let Ok(ray) = camera.viewport_to_world(camera_transform, cursor_position) else {
+        return;
+    };
+
+    // Find water plane (at Y=0)
+    let water_y = 0.0;
+    
+    // Ray-plane intersection
+    let t = (water_y - ray.origin.y) / ray.direction.y;
+    if t < 0.0 {
+        return; // Ray points away from plane
+    }
+
+    // Calculate intersection point
+    let world_pos = ray.origin + ray.direction * t;
+    
+    // Convert world position to UV coordinates (water plane is 8x8 centered at origin)
+    let water_size = 8.0;
+    let half_size = water_size * 0.5;
+    
+    // Map from world space (-4, -4) to (4, 4) to UV space (0, 0) to (1, 1)
+    let uv_x = (world_pos.x + half_size) / water_size;
+    let uv_y = (world_pos.z + half_size) / water_size;
+    
+    // Clamp to valid UV range
+    let uv_x = uv_x.clamp(0.0, 1.0);
+    let uv_y = uv_y.clamp(0.0, 1.0);
+    
+    // Update wave parameters
+    wave_params.input_x = uv_x;
+    wave_params.input_y = uv_y;
+    wave_params.got_input = 1.0;
+    wave_params.input_push = 0.0; // 0 = push down (create wave), 1 = push up
+    
+    info!("Mouse click at world ({:.2}, {:.2}, {:.2}) -> UV ({:.3}, {:.3})", 
+        world_pos.x, world_pos.y, world_pos.z, uv_x, uv_y);
+}
+
+fn clear_wave_input(
+    mut wave_params: ResMut<WaveSimulationParams>,
+) {
+    // Clear input after one frame
+    if wave_params.got_input > 0.5 {
+        wave_params.got_input = 0.0;
+    }
 }

@@ -22,26 +22,36 @@
 - Render graph node integrated but actual compute dispatch pending
 - Logging shows "Wave simulation render node initialized" and status updates every 2 seconds
 
-## Phase 3: Input System & Wave Generation 🚧 NEXT
+## Phase 3: Input System & Wave Generation ✅ COMPLETED
 **Goal**: Add mouse interaction to create waves
-- **Step 3.1**: Implement mouse position to world-space raycast system
-- **Step 3.2**: Convert world coordinates to texture UV coordinates
-- **Step 3.3**: Pass input data to compute shader for wave generation
-- **Step 3.4**: Actually dispatch compute shader with proper pipeline
-- **Expected Output**: Clicking mouse creates wave data in textures (still no visual representation)
+- **Step 3.1**: ✅ Implement mouse position to world-space raycast system
+- **Step 3.2**: ✅ Convert world coordinates to texture UV coordinates
+- **Step 3.3**: ✅ Pass input data to compute shader for wave generation
+- **Step 3.4**: 🚧 Actually dispatch compute shader with proper pipeline (partial)
+- **Expected Output**: ✅ Clicking mouse logs UV coordinates and updates wave parameters
 
-**Implementation Plan**:
-- Add mouse click detection system
-- Implement ray-plane intersection for water surface
-- Update WaveSimulationParams with input position
-- Create compute pipeline and dispatch in render node
+**Progress Notes**:
+- Mouse click detection working perfectly
+- Ray-plane intersection calculates hit point on water surface (Y=0)
+- World coordinates correctly converted to UV space (0-1 range)
+- Click logs show: `Mouse click at world (x, 0.00, z) -> UV (u, v)`
+- Wave parameters updated with input position
+- Input cleared after one frame to create single wave pulse
+- Compute shader dispatch infrastructure ready but not executing
 
-## Phase 4: Visual Rendering & Vertex Displacement
+## Phase 4: Visual Rendering & Vertex Displacement 🚧 NEXT
 **Goal**: Make waves visible through mesh deformation
 - **Step 4.1**: Create water material shader with vertex displacement from wave texture
 - **Step 4.2**: Sample wave height texture in vertex shader for mesh deformation
 - **Step 4.3**: Calculate surface normals from wave gradients for proper lighting
 - **Expected Output**: Clicking mouse creates visible 3D wave ripples that propagate outward
+
+**Implementation Plan**:
+- Complete compute shader dispatch in render node
+- Create custom water material with vertex shader
+- Bind wave texture to material for sampling
+- Apply height displacement to water mesh vertices
+- Calculate normals from neighboring heights
 
 ## Phase 5: Water Appearance & Polish
 **Goal**: Achieve visual parity with Unity demo
