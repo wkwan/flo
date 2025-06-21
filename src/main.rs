@@ -1,10 +1,7 @@
 use bevy::prelude::*;
-use bevy::render::extract_resource::{ExtractResource, ExtractResourcePlugin};
-use bevy::render::render_graph::{self, RenderGraph, RenderLabel};
+use bevy::render::extract_resource::{ExtractResource};
 use bevy::render::render_resource::*;
-use bevy::render::renderer::RenderContext;
-use bevy::render::{Render, RenderApp, RenderSet};
-use bevy::asset::{Asset, AssetApp};
+use bevy::asset::{Asset};
 use bevy::pbr::{MaterialPlugin, Material};
 
 fn main() {
@@ -82,7 +79,7 @@ fn setup(
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(wall_thickness, wall_height, water_size))),
         MeshMaterial3d(wall_material.clone()),
-        Transform::from_xyz(-half_water - wall_thickness * 0.5, wall_height * 0.5, 0.0),
+        Transform::from_xyz(-half_water - wall_thickness * 0.5, wall_height * 0.5 - 2.0, 0.0),
         GlobalTransform::default(),
         Visibility::default(),
     ));
@@ -91,7 +88,7 @@ fn setup(
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(wall_thickness, wall_height, water_size))),
         MeshMaterial3d(wall_material.clone()),
-        Transform::from_xyz(half_water + wall_thickness * 0.5, wall_height * 0.5, 0.0),
+        Transform::from_xyz(half_water + wall_thickness * 0.5, wall_height * 0.5 - 2.0, 0.0),
         GlobalTransform::default(),
         Visibility::default(),
     ));
@@ -100,7 +97,7 @@ fn setup(
     commands.spawn((
         Mesh3d(meshes.add(Cuboid::new(water_size + wall_thickness * 2.0, wall_height, wall_thickness))),
         MeshMaterial3d(wall_material.clone()),
-        Transform::from_xyz(0.0, wall_height * 0.5, -half_water - wall_thickness * 0.5),
+        Transform::from_xyz(0.0, wall_height * 0.5 - 2.0, -half_water - wall_thickness * 0.5),
         GlobalTransform::default(),
         Visibility::default(),
     ));
@@ -207,7 +204,7 @@ impl Material for WaterMaterial {
     }
     
     fn alpha_mode(&self) -> AlphaMode {
-        AlphaMode::Opaque
+        AlphaMode::Blend
     }
 }
 
@@ -216,7 +213,7 @@ impl Default for WaterMaterial {
         Self {
             uniform: WaterMaterialUniform {
                 wave_amplitude: 1.0,
-                color: Vec4::new(0.1, 0.3, 0.8, 1.0),
+                color: Vec4::new(0.1, 0.3, 0.8, 0.2),
             },
             wave_texture: Handle::default(),
         }
@@ -286,7 +283,7 @@ fn setup_water_material(
     let water_material = water_materials.add(WaterMaterial {
         uniform: WaterMaterialUniform {
             wave_amplitude: 2.0, // Make waves more visible
-            color: Vec4::new(0.1, 0.3, 0.8, 1.0), // Blue water color
+            color: Vec4::new(0.1, 0.3, 0.8, 0.2), // Blue water color
         },
         wave_texture: wave_textures.texture_a.clone(),
     });
