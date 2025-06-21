@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = { version = "0.16.1", features = ["dynamic_linking"] }
+bevy = { version = "0.16.1", features = ["dynamic_linking", "jpeg"] }
 
 # Enable a small amount of optimization in the dev profile.
 [profile.dev]
