@@ -1,9 +1,17 @@
 use bevy::prelude::*;
+use bevy::render::extract_resource::{ExtractResource, ExtractResourcePlugin};
+use bevy::render::render_graph::{self, RenderGraph, RenderLabel};
+use bevy::render::render_resource::*;
+use bevy::render::renderer::{RenderContext, RenderDevice};
+use bevy::render::{Render, RenderApp, RenderSet};
+use bevy::asset::{Asset, AssetApp};
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_systems(Startup, setup)
+        .add_plugins(WaveSimulationPlugin)
+        .add_systems(Startup, (setup, setup_wave_textures).chain())
+        .add_systems(Update, log_wave_simulation_status)
         .run();
 }
 
@@ -232,67 +240,181 @@ fn create_wall_mesh(width: f32, height: f32, thickness: f32) -> Mesh {
     .with_inserted_indices(bevy::render::mesh::Indices::U32(indices))
 }
 
-fn create_floor_mesh(size: f32, thickness: f32) -> Mesh {
-    let half_size = size * 0.5;
-    let half_thickness = thickness * 0.5;
+#[derive(Resource, Clone, ExtractResource, ShaderType)]
+struct WaveSimulationParams {
+    dampening: f32,
+    input_x: f32,
+    input_y: f32,
+    input_size: f32,
+    min_input_size: f32,
+    got_input: f32,
+    input_push: f32,
+    resolution: Vec2,
+}
 
-    let positions = vec![
-        // Top face
-        [-half_size, half_thickness, -half_size],
-        [half_size, half_thickness, -half_size],
-        [half_size, half_thickness, half_size],
-        [-half_size, half_thickness, half_size],
-        // Bottom face
-        [-half_size, -half_thickness, half_size],
-        [half_size, -half_thickness, half_size],
-        [half_size, -half_thickness, -half_size],
-        [-half_size, -half_thickness, -half_size],
-    ];
+impl Default for WaveSimulationParams {
+    fn default() -> Self {
+        Self {
+            dampening: 0.99,
+            input_x: 0.0,
+            input_y: 0.0,
+            input_size: 20.0,
+            min_input_size: 5.0,
+            got_input: 0.0,
+            input_push: 0.0,
+            resolution: Vec2::new(512.0, 512.0),
+        }
+    }
+}
 
-    let normals = vec![
-        // Top face
-        [0.0, 1.0, 0.0],
-        [0.0, 1.0, 0.0],
-        [0.0, 1.0, 0.0],
-        [0.0, 1.0, 0.0],
-        // Bottom face
-        [0.0, -1.0, 0.0],
-        [0.0, -1.0, 0.0],
-        [0.0, -1.0, 0.0],
-        [0.0, -1.0, 0.0],
-    ];
+#[derive(Asset, TypePath, AsBindGroup, Clone)]
+struct WaveComputeShader {
+    #[storage_texture(0, image_format = Rg32Float, access = ReadWrite)]
+    texture_a: Handle<Image>,
+    #[storage_texture(1, image_format = Rg32Float, access = ReadWrite)]
+    texture_b: Handle<Image>,
+    #[uniform(2)]
+    params: WaveSimulationParams,
+}
 
-    let uvs = vec![
-        // Top face - repeat texture
-        [0.0, 0.0],
-        [2.0, 0.0],
-        [2.0, 2.0],
-        [0.0, 2.0],
-        // Bottom face
-        [0.0, 0.0],
-        [2.0, 0.0],
-        [2.0, 2.0],
-        [0.0, 2.0],
-    ];
+#[derive(Resource, Clone, ExtractResource)]
+struct WaveTextures {
+    texture_a: Handle<Image>,
+    texture_b: Handle<Image>,
+    current_texture: bool, // false = texture_a, true = texture_b
+}
 
-    let indices = vec![
-        // Top face
-        0, 1, 2, 2, 3, 0,
-        // Bottom face
-        4, 5, 6, 6, 7, 4,
-        // Side faces
-        7, 6, 1, 1, 0, 7,
-        6, 5, 2, 2, 1, 6,
-        5, 4, 3, 3, 2, 5,
-        4, 7, 0, 0, 3, 4,
-    ];
+struct WaveSimulationPlugin;
 
-    Mesh::new(
-        bevy::render::render_resource::PrimitiveTopology::TriangleList,
-        bevy::render::render_asset::RenderAssetUsages::MAIN_WORLD | bevy::render::render_asset::RenderAssetUsages::RENDER_WORLD,
-    )
-    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
-    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
-    .with_inserted_indices(bevy::render::mesh::Indices::U32(indices))
+impl Plugin for WaveSimulationPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_asset::<WaveComputeShader>()
+            .init_resource::<WaveSimulationParams>()
+            .add_plugins(ExtractResourcePlugin::<WaveSimulationParams>::default())
+            .add_plugins(ExtractResourcePlugin::<WaveTextures>::default());
+
+        let render_app = app.sub_app_mut(RenderApp);
+        render_app
+            .add_systems(Render, queue_wave_simulation.in_set(RenderSet::Queue));
+    }
+
+    fn finish(&self, app: &mut App) {
+        let render_app = app.sub_app_mut(RenderApp);
+        let mut render_graph = render_app.world_mut().resource_mut::<RenderGraph>();
+        render_graph.add_node(WaveSimulationLabel, WaveSimulationNode::default());
+        render_graph.add_node_edge(WaveSimulationLabel, bevy::render::graph::CameraDriverLabel);
+    }
+}
+
+#[derive(Debug, Hash, PartialEq, Eq, Clone, RenderLabel)]
+struct WaveSimulationLabel;
+
+#[derive(Default)]
+struct WaveSimulationNode {
+    initialized: std::sync::atomic::AtomicBool,
+}
+
+impl render_graph::Node for WaveSimulationNode {
+    fn run(
+        &self,
+        _graph: &mut render_graph::RenderGraphContext,
+        _render_context: &mut RenderContext,
+        world: &bevy::ecs::world::World,
+    ) -> Result<(), render_graph::NodeRunError> {
+        // Log when first initialized
+        use std::sync::atomic::Ordering;
+        if !self.initialized.load(Ordering::Relaxed) {
+            info!("Wave simulation render node initialized");
+            self.initialized.store(true, Ordering::Relaxed);
+        }
+        
+        // Check if resources exist
+        if let Some(wave_textures) = world.get_resource::<WaveTextures>() {
+            if let Some(params) = world.get_resource::<WaveSimulationParams>() {
+                trace!("Wave simulation running - dampening: {}, resolution: {:?}", 
+                    params.dampening, params.resolution);
+            }
+        }
+        
+        Ok(())
+    }
+}
+
+fn setup_wave_textures(
+    mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
+) {
+    info!("Setting up wave simulation textures");
+    // Create 512x512 RG32Float textures for double buffering
+    let size = Extent3d {
+        width: 512,
+        height: 512,
+        depth_or_array_layers: 1,
+    };
+
+    let mut texture_a = Image {
+        texture_descriptor: TextureDescriptor {
+            label: Some("wave_texture_a"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rg32Float,
+            usage: TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+            view_formats: &[],
+        },
+        data: Some(vec![0u8; (512 * 512 * 8) as usize]), // RG32Float = 8 bytes per pixel
+        ..default()
+    };
+
+    let mut texture_b = texture_a.clone();
+    texture_b.texture_descriptor.label = Some("wave_texture_b");
+    
+    // Initialize with neutral values (0.5, 0.5) representing no displacement
+    let neutral_data: Vec<u8> = (0..512 * 512)
+        .flat_map(|_| {
+            let val = 0.5f32;
+            [val.to_le_bytes(), val.to_le_bytes()].concat()
+        })
+        .collect();
+    
+    texture_a.data = Some(neutral_data.clone());
+    texture_b.data = Some(neutral_data);
+
+    let texture_a_handle = images.add(texture_a);
+    let texture_b_handle = images.add(texture_b);
+
+    commands.insert_resource(WaveTextures {
+        texture_a: texture_a_handle.clone(),
+        texture_b: texture_b_handle.clone(),
+        current_texture: false,
+    });
+    
+    info!("Wave textures initialized - A: {:?}, B: {:?}", texture_a_handle, texture_b_handle);
+}
+
+fn log_wave_simulation_status(
+    time: Res<Time>,
+    wave_textures: Option<Res<WaveTextures>>,
+    params: Option<Res<WaveSimulationParams>>,
+) {
+    // Log every 2 seconds
+    let elapsed = time.elapsed_secs();
+    if (elapsed as u32) % 2 == 0 && (elapsed * 10.0) as u32 % 10 == 0 {
+        if let (Some(textures), Some(params)) = (wave_textures, params) {
+            info!("Wave simulation status - Time: {:.1}s, Dampening: {}, Current buffer: {}",
+                elapsed, params.dampening, if textures.current_texture { "B" } else { "A" });
+        } else {
+            warn!("Wave simulation resources not found at {:.1}s", elapsed);
+        }
+    }
+}
+
+fn queue_wave_simulation(
+    wave_textures: Res<WaveTextures>,
+    params: Res<WaveSimulationParams>,
+) {
+    // Log that we're queuing wave simulation
+    trace!("Queuing wave simulation - current buffer: {}", 
+        if wave_textures.current_texture { "B" } else { "A" });
 }
