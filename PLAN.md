@@ -39,22 +39,46 @@
 - Input cleared after one frame to create single wave pulse
 - Compute shader dispatch infrastructure ready but not executing
 
-## Phase 4: Visual Rendering & Vertex Displacement 🚧 NEXT
+## Phase 4: Visual Rendering & Vertex Displacement ✅ INFRASTRUCTURE COMPLETE
 **Goal**: Make waves visible through mesh deformation
-- **Step 4.1**: Create water material shader with vertex displacement from wave texture
-- **Step 4.2**: Sample wave height texture in vertex shader for mesh deformation
-- **Step 4.3**: Calculate surface normals from wave gradients for proper lighting
-- **Expected Output**: Clicking mouse creates visible 3D wave ripples that propagate outward
+- **Step 4.1**: ✅ Create water material shader with vertex displacement from wave texture
+- **Step 4.2**: ✅ Sample wave height texture in vertex shader for mesh deformation
+- **Step 4.3**: ✅ Calculate surface normals from wave gradients for proper lighting
+- **Expected Output**: 🚧 Clicking mouse creates visible 3D wave ripples that propagate outward
 
-**Implementation Plan**:
-- Complete compute shader dispatch in render node
-- Create custom water material with vertex shader
-- Bind wave texture to material for sampling
-- Apply height displacement to water mesh vertices
-- Calculate normals from neighboring heights
+**Progress Notes**:
+- ✅ Custom water material shader created (`assets/shaders/water_material.wgsl`)
+- ✅ Vertex displacement system implemented with wave texture sampling
+- ✅ Surface normal calculation from wave gradients for proper lighting
+- ✅ Water material pipeline integrated with Bevy's Material system
+- ✅ Shader compilation errors fixed (`view.view_proj` → `view.clip_from_world`, `view.projection` → `view.clip_from_view`)
+- ✅ Water plane visibility confirmed with debug material (bright blue emissive)
+- 🚧 **BLOCKING ISSUE**: Compute shader dispatch not executing - wave texture remains static
+- 🚧 **NEXT STEP**: Fix compute shader execution to generate actual wave data
 
-## Phase 5: Water Appearance & Polish
-**Goal**: Achieve visual parity with Unity demo
+**Technical Status**:
+- Water plane mesh: ✅ Visible and responding to mouse clicks
+- Wave texture binding: ✅ Working (material receives texture)
+- Vertex displacement: ✅ Ready (shader samples wave texture)
+- Compute simulation: ❌ Not executing (texture data remains at neutral 0.5 values)
+- Mouse input system: ✅ Working (logs show correct UV coordinates)
+
+## Phase 4.5: Compute Shader Execution Fix 🚧 CURRENT PRIORITY
+**Goal**: Get wave simulation actually running
+- **Step 4.5.1**: Debug render graph execution - ensure compute pass runs each frame
+- **Step 4.5.2**: Fix compute shader dispatch parameters (workgroup size, texture binding)
+- **Step 4.5.3**: Verify wave simulation math and boundary conditions
+- **Step 4.5.4**: Switch back to custom WaterMaterial once waves are working
+- **Expected Output**: Mouse clicks create visible wave ripples that propagate across water surface
+
+**Current Issues to Resolve**:
+- Compute shader has validation errors with workgroup shared memory layout
+- Render graph node reports "initialized" but may not be dispatching compute work
+- Wave texture data remains static (neutral 0.5 values) despite input events
+- Need to verify bind group layout matches shader expectations
+
+## Phase 5: Water Appearance & Polish 
+**Goal**: Achieve visual parity with Unity demo (BLOCKED until Phase 4.5 complete)
 - **Step 5.1**: Add water surface shading (depth-based color, transparency)
 - **Step 5.2**: Implement foam effects in shallow areas
 - **Step 5.3**: Add specular highlights and surface smoothness

@@ -2,16 +2,18 @@ use bevy::prelude::*;
 use bevy::render::extract_resource::{ExtractResource, ExtractResourcePlugin};
 use bevy::render::render_graph::{self, RenderGraph, RenderLabel};
 use bevy::render::render_resource::*;
-use bevy::render::renderer::{RenderContext, RenderDevice};
+use bevy::render::renderer::RenderContext;
 use bevy::render::{Render, RenderApp, RenderSet};
 use bevy::asset::{Asset, AssetApp};
+use bevy::pbr::{MaterialPlugin, Material};
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .add_plugins(MaterialPlugin::<WaterMaterial>::default())
         .add_plugins(WaveSimulationPlugin)
         .add_systems(Startup, (setup, setup_wave_textures).chain())
-        .add_systems(Update, (handle_mouse_input, clear_wave_input, log_wave_simulation_status).chain())
+        .add_systems(Update, (handle_mouse_input, clear_wave_input, log_wave_simulation_status, update_water_material).chain())
         .run();
 }
 
@@ -19,6 +21,7 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    _water_materials: ResMut<Assets<WaterMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
     // Camera - positioned like in Unity screenshot
@@ -63,16 +66,18 @@ fn setup(
 
     // Water plane - subdivided quad for wave displacement (centered at origin)
     let water_mesh = create_subdivided_plane(64, 64, 8.0);
+    
+    // Temporary: Use bright emissive StandardMaterial for debugging visibility
+    let debug_water_material = materials.add(StandardMaterial {
+        base_color: Color::srgb(0.0, 1.0, 1.0), // Bright cyan
+        emissive: LinearRgba::new(0.0, 0.5, 1.0, 1.0), // Bright blue emission
+        ..default()
+    });
+    
     commands.spawn((
         Name::new("WaterPlane"),
         Mesh3d(meshes.add(water_mesh)),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgba(0.1, 0.3, 0.8, 0.8),
-            metallic: 0.0,
-            perceptual_roughness: 0.1,
-            alpha_mode: AlphaMode::Blend,
-            ..default()
-        })),
+        MeshMaterial3d(debug_water_material),
         Transform::default(),
         GlobalTransform::default(),
         Visibility::default(),
@@ -172,75 +177,6 @@ fn create_subdivided_plane(width_subdivisions: u32, height_subdivisions: u32, si
     .with_inserted_indices(bevy::render::mesh::Indices::U32(indices))
 }
 
-fn create_wall_mesh(width: f32, height: f32, thickness: f32) -> Mesh {
-    let half_width = width * 0.5;
-    let half_height = height * 0.5;
-    let half_thickness = thickness * 0.5;
-
-    let positions = vec![
-        // Front face
-        [-half_width, -half_height, half_thickness],
-        [half_width, -half_height, half_thickness],
-        [half_width, half_height, half_thickness],
-        [-half_width, half_height, half_thickness],
-        // Back face
-        [half_width, -half_height, -half_thickness],
-        [-half_width, -half_height, -half_thickness],
-        [-half_width, half_height, -half_thickness],
-        [half_width, half_height, -half_thickness],
-    ];
-
-    let normals = vec![
-        // Front face
-        [0.0, 0.0, 1.0],
-        [0.0, 0.0, 1.0],
-        [0.0, 0.0, 1.0],
-        [0.0, 0.0, 1.0],
-        // Back face
-        [0.0, 0.0, -1.0],
-        [0.0, 0.0, -1.0],
-        [0.0, 0.0, -1.0],
-        [0.0, 0.0, -1.0],
-    ];
-
-    let uvs = vec![
-        // Front face
-        [0.0, 0.0],
-        [2.0, 0.0], // Repeat texture
-        [2.0, 1.0],
-        [0.0, 1.0],
-        // Back face
-        [0.0, 0.0],
-        [2.0, 0.0],
-        [2.0, 1.0],
-        [0.0, 1.0],
-    ];
-
-    let indices = vec![
-        // Front face
-        0, 1, 2, 2, 3, 0,
-        // Back face
-        4, 5, 6, 6, 7, 4,
-        // Left face
-        5, 0, 3, 3, 6, 5,
-        // Right face
-        1, 4, 7, 7, 2, 1,
-        // Top face
-        3, 2, 7, 7, 6, 3,
-        // Bottom face
-        5, 4, 1, 1, 0, 5,
-    ];
-
-    Mesh::new(
-        bevy::render::render_resource::PrimitiveTopology::TriangleList,
-        bevy::render::render_asset::RenderAssetUsages::MAIN_WORLD | bevy::render::render_asset::RenderAssetUsages::RENDER_WORLD,
-    )
-    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
-    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
-    .with_inserted_indices(bevy::render::mesh::Indices::U32(indices))
-}
-
 #[derive(Resource, Clone, ExtractResource, ShaderType)]
 struct WaveSimulationParams {
     dampening: f32,
@@ -283,6 +219,48 @@ struct WaveTextures {
     texture_a: Handle<Image>,
     texture_b: Handle<Image>,
     current_texture: bool, // false = texture_a, true = texture_b
+}
+
+
+#[derive(ShaderType, Clone)]
+struct WaterMaterialUniform {
+    wave_amplitude: f32,
+    color: Vec4,
+}
+
+#[derive(Asset, TypePath, AsBindGroup, Clone)]
+struct WaterMaterial {
+    #[texture(0)]
+    #[sampler(1)]
+    wave_texture: Option<Handle<Image>>,
+    #[uniform(2)]
+    uniform: WaterMaterialUniform,
+}
+
+impl Material for WaterMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/water_material.wgsl".into()
+    }
+    
+    fn vertex_shader() -> ShaderRef {
+        "shaders/water_material.wgsl".into()
+    }
+    
+    fn alpha_mode(&self) -> AlphaMode {
+        AlphaMode::Opaque
+    }
+}
+
+impl Default for WaterMaterial {
+    fn default() -> Self {
+        Self {
+            wave_texture: None,
+            uniform: WaterMaterialUniform {
+                wave_amplitude: 1.0,
+                color: Vec4::new(0.1, 0.3, 0.8, 1.0),
+            },
+        }
+    }
 }
 
 struct WaveSimulationPlugin;
@@ -338,15 +316,6 @@ impl render_graph::Node for WaveSimulationNode {
             return Ok(());
         };
         
-        let Some(_pipeline_cache) = world.get_resource::<PipelineCache>() else {
-            return Ok(());
-        };
-        
-        let Some(_render_device) = world.get_resource::<RenderDevice>() else {
-            return Ok(());
-        };
-        
-        // TODO: Create compute pipeline and dispatch
         // For now, just log when we have input
         if params.got_input > 0.5 {
             trace!("Wave simulation would dispatch at UV ({:.3}, {:.3})", 
@@ -427,6 +396,7 @@ fn log_wave_simulation_status(
     }
 }
 
+
 fn queue_wave_simulation(
     wave_textures: Res<WaveTextures>,
     _params: Res<WaveSimulationParams>,
@@ -440,7 +410,7 @@ fn handle_mouse_input(
     mouse_button: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     cameras: Query<(&Camera, &GlobalTransform)>,
-    water_planes: Query<&Transform, With<Name>>,
+    _water_planes: Query<&Transform, With<Name>>,
     mut wave_params: ResMut<WaveSimulationParams>,
 ) {
     // Check for left mouse click
@@ -508,5 +478,26 @@ fn clear_wave_input(
     // Clear input after one frame
     if wave_params.got_input > 0.5 {
         wave_params.got_input = 0.0;
+    }
+}
+
+fn update_water_material(
+    mut water_materials: ResMut<Assets<WaterMaterial>>,
+    wave_textures: Option<Res<WaveTextures>>,
+    water_planes: Query<&MeshMaterial3d<WaterMaterial>, With<Name>>,
+) {
+    // Update water material with current wave texture
+    if let Some(wave_textures) = wave_textures {
+        for material_handle in water_planes.iter() {
+            if let Some(material) = water_materials.get_mut(&material_handle.0) {
+                // Use the current active texture based on double buffering
+                let current_texture = if wave_textures.current_texture {
+                    &wave_textures.texture_b
+                } else {
+                    &wave_textures.texture_a
+                };
+                material.wave_texture = Some(current_texture.clone());
+            }
+        }
     }
 }
