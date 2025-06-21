@@ -39,11 +39,12 @@
 - Input cleared after one frame to create single wave pulse
 - Compute shader dispatch infrastructure ready but not executing
 
-## Phase 4: Visual Rendering & Vertex Displacement ✅ INFRASTRUCTURE COMPLETE
+## Phase 4: Visual Rendering & Vertex Displacement ✅ MATERIAL SYSTEM COMPLETE
 **Goal**: Make waves visible through mesh deformation
 - **Step 4.1**: ✅ Create water material shader with vertex displacement from wave texture
 - **Step 4.2**: ✅ Sample wave height texture in vertex shader for mesh deformation
 - **Step 4.3**: ✅ Calculate surface normals from wave gradients for proper lighting
+- **Step 4.4**: ✅ Connect wave textures to water material system
 - **Expected Output**: 🚧 Clicking mouse creates visible 3D wave ripples that propagate outward
 
 **Progress Notes**:
@@ -52,30 +53,35 @@
 - ✅ Surface normal calculation from wave gradients for proper lighting
 - ✅ Water material pipeline integrated with Bevy's Material system
 - ✅ Shader compilation errors fixed (`view.view_proj` → `view.clip_from_world`, `view.projection` → `view.clip_from_view`)
-- ✅ Water plane visibility confirmed with debug material (bright blue emissive)
-- 🚧 **BLOCKING ISSUE**: Compute shader dispatch not executing - wave texture remains static
-- 🚧 **NEXT STEP**: Fix compute shader execution to generate actual wave data
+- ✅ Water plane visibility confirmed with custom material (blue water surface)
+- ✅ Wave texture binding system completed - material receives wave texture
+- ✅ Setup pipeline: setup → setup_wave_textures → setup_water_material
+- 🚧 **BLOCKING ISSUE**: Compute shader not executing - wave texture data remains static at neutral 0.5 values
 
 **Technical Status**:
-- Water plane mesh: ✅ Visible and responding to mouse clicks
-- Wave texture binding: ✅ Working (material receives texture)
-- Vertex displacement: ✅ Ready (shader samples wave texture)
-- Compute simulation: ❌ Not executing (texture data remains at neutral 0.5 values)
+- Water plane mesh: ✅ Visible with custom material (blue water surface)
+- Wave texture binding: ✅ Working (material properly bound to wave texture)
+- Vertex displacement: ✅ Ready (shader samples wave texture for displacement)
+- Compute simulation: ❌ Not executing (texture data remains unchanged)
 - Mouse input system: ✅ Working (logs show correct UV coordinates)
+- Material system: ✅ Complete (WaterMaterial with texture, sampler, uniform bindings)
 
 ## Phase 4.5: Compute Shader Execution Fix 🚧 CURRENT PRIORITY
-**Goal**: Get wave simulation actually running
-- **Step 4.5.1**: Debug render graph execution - ensure compute pass runs each frame
-- **Step 4.5.2**: Fix compute shader dispatch parameters (workgroup size, texture binding)
-- **Step 4.5.3**: Verify wave simulation math and boundary conditions
-- **Step 4.5.4**: Switch back to custom WaterMaterial once waves are working
+**Goal**: Get wave simulation actually running to generate texture data
+- **Step 4.5.1**: ✅ Confirmed render graph node initializes and runs each frame
+- **Step 4.5.2**: 🚧 Implement proper compute shader dispatch with bind groups
+- **Step 4.5.3**: Fix texture modification permissions and buffer layouts
+- **Step 4.5.4**: Verify wave simulation math produces visible displacement
 - **Expected Output**: Mouse clicks create visible wave ripples that propagate across water surface
 
 **Current Issues to Resolve**:
-- Compute shader has validation errors with workgroup shared memory layout
-- Render graph node reports "initialized" but may not be dispatching compute work
-- Wave texture data remains static (neutral 0.5 values) despite input events
-- Need to verify bind group layout matches shader expectations
+- ❌ Compute shader dispatch not implemented (render node only logs, doesn't execute)
+- ❌ Wave texture data never changes from initial neutral values (0.5, 0.5)
+- ❌ Need proper compute pipeline creation and dispatch in render graph
+- ❌ Texture usage flags may need adjustment for compute shader write access
+- 🚧 Despite complete material system, no visual waves because compute shader never runs
+
+**Key Insight**: The material/rendering pipeline is working correctly - the issue is that the compute shader never actually executes to modify the wave texture data. The render node initializes but contains no compute dispatch logic.
 
 ## Phase 5: Water Appearance & Polish 
 **Goal**: Achieve visual parity with Unity demo (BLOCKED until Phase 4.5 complete)

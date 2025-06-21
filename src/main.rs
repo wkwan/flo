@@ -12,8 +12,9 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(MaterialPlugin::<WaterMaterial>::default())
         .add_plugins(WaveSimulationPlugin)
-        .add_systems(Startup, (setup, setup_wave_textures).chain())
-        .add_systems(Update, (handle_mouse_input, clear_wave_input, log_wave_simulation_status, update_water_material).chain())
+        .add_systems(Startup, (setup, setup_wave_textures, setup_water_material).chain())
+        .add_systems(Update, (handle_mouse_input, log_wave_simulation_status, update_water_material))
+        .add_systems(PostUpdate, clear_wave_input)
         .run();
 }
 
@@ -21,7 +22,6 @@ fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    _water_materials: ResMut<Assets<WaterMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
     // Camera - positioned like in Unity screenshot
@@ -67,17 +67,9 @@ fn setup(
     // Water plane - subdivided quad for wave displacement (centered at origin)
     let water_mesh = create_subdivided_plane(64, 64, 8.0);
     
-    // Temporary: Use bright emissive StandardMaterial for debugging visibility
-    let debug_water_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.0, 1.0, 1.0), // Bright cyan
-        emissive: LinearRgba::new(0.0, 0.5, 1.0, 1.0), // Bright blue emission
-        ..default()
-    });
-    
     commands.spawn((
         Name::new("WaterPlane"),
         Mesh3d(meshes.add(water_mesh)),
-        MeshMaterial3d(debug_water_material),
         Transform::default(),
         GlobalTransform::default(),
         Visibility::default(),
@@ -187,6 +179,7 @@ struct WaveSimulationParams {
     got_input: f32,
     input_push: f32,
     resolution: Vec2,
+    frame_counter: f32, // For debugging timing
 }
 
 impl Default for WaveSimulationParams {
@@ -200,9 +193,11 @@ impl Default for WaveSimulationParams {
             got_input: 0.0,
             input_push: 0.0,
             resolution: Vec2::new(512.0, 512.0),
+            frame_counter: 0.0,
         }
     }
 }
+
 
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
 struct WaveComputeShader {
@@ -230,11 +225,11 @@ struct WaterMaterialUniform {
 
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
 struct WaterMaterial {
-    #[texture(0)]
-    #[sampler(1)]
-    wave_texture: Option<Handle<Image>>,
-    #[uniform(2)]
+    #[uniform(0)]
     uniform: WaterMaterialUniform,
+    #[texture(1)]
+    #[sampler(2)]
+    wave_texture: Handle<Image>,
 }
 
 impl Material for WaterMaterial {
@@ -254,11 +249,11 @@ impl Material for WaterMaterial {
 impl Default for WaterMaterial {
     fn default() -> Self {
         Self {
-            wave_texture: None,
             uniform: WaterMaterialUniform {
                 wave_amplitude: 1.0,
                 color: Vec4::new(0.1, 0.3, 0.8, 1.0),
             },
+            wave_texture: Handle::default(),
         }
     }
 }
@@ -307,19 +302,37 @@ impl render_graph::Node for WaveSimulationNode {
             self.initialized.store(true, Ordering::Relaxed);
         }
         
-        // Check if resources exist and run compute shader
-        let Some(_wave_textures) = world.get_resource::<WaveTextures>() else {
+        // Check if resources exist and debug extraction
+        let Some(wave_textures) = world.get_resource::<WaveTextures>() else {
+            trace!("WaveTextures resource not found in render world");
             return Ok(());
         };
         
         let Some(params) = world.get_resource::<WaveSimulationParams>() else {
+            trace!("WaveSimulationParams resource not found in render world");
             return Ok(());
         };
         
-        // For now, just log when we have input
+        let Some(gpu_images) = world.get_resource::<bevy::render::render_asset::RenderAssets<bevy::render::texture::GpuImage>>() else {
+            trace!("GpuImage RenderAssets not found in render world");
+            return Ok(());
+        };
+        
+        // Debug: Always log current input state
+        trace!("Wave simulation render node: got_input={:.1}, input=({:.3}, {:.3}), frame={:.0}", 
+            params.got_input, params.input_x, params.input_y, params.frame_counter);
+        
+        // For now, just log when we have input and try basic texture update
         if params.got_input > 0.5 {
-            trace!("Wave simulation would dispatch at UV ({:.3}, {:.3})", 
+            info!("Wave simulation processing input at UV ({:.3}, {:.3})", 
                 params.input_x, params.input_y);
+                
+            // Get the current textures
+            if let Some(texture_a) = gpu_images.get(&wave_textures.texture_a) {
+                // TODO: Simple test - clear texture to test if we can modify it
+                // This is a placeholder for actual compute shader dispatch
+                info!("Wave texture A found: {:?}", texture_a.texture.size());
+            }
         }
         
         Ok(())
@@ -379,6 +392,29 @@ fn setup_wave_textures(
     info!("Wave textures initialized - A: {:?}, B: {:?}", texture_a_handle, texture_b_handle);
 }
 
+fn setup_water_material(
+    mut commands: Commands,
+    mut water_materials: ResMut<Assets<WaterMaterial>>,
+    wave_textures: Res<WaveTextures>,
+    mut water_plane_query: Query<Entity, (With<Name>, Without<MeshMaterial3d<WaterMaterial>>)>,
+) {
+    // Create water material with wave texture
+    let water_material = water_materials.add(WaterMaterial {
+        uniform: WaterMaterialUniform {
+            wave_amplitude: 2.0, // Make waves more visible
+            color: Vec4::new(0.1, 0.3, 0.8, 1.0), // Blue water color
+        },
+        wave_texture: wave_textures.texture_a.clone(),
+    });
+    
+    // Add material to water plane
+    for entity in water_plane_query.iter_mut() {
+        commands.entity(entity).insert(MeshMaterial3d(water_material.clone()));
+        info!("Water material applied to water plane");
+        break; // Only apply to first water plane
+    }
+}
+
 fn log_wave_simulation_status(
     time: Res<Time>,
     wave_textures: Option<Res<WaveTextures>>,
@@ -404,6 +440,9 @@ fn queue_wave_simulation(
     // Log that we're queuing wave simulation
     trace!("Queuing wave simulation - current buffer: {}", 
         if wave_textures.current_texture { "B" } else { "A" });
+    
+    // TODO: Implement actual compute dispatch
+    // For now, keeping as stub while working on the infrastructure
 }
 
 fn handle_mouse_input(
@@ -467,6 +506,7 @@ fn handle_mouse_input(
     wave_params.input_y = uv_y;
     wave_params.got_input = 1.0;
     wave_params.input_push = 0.0; // 0 = push down (create wave), 1 = push up
+    wave_params.frame_counter += 1.0;
     
     info!("Mouse click at world ({:.2}, {:.2}, {:.2}) -> UV ({:.3}, {:.3})", 
         world_pos.x, world_pos.y, world_pos.z, uv_x, uv_y);
@@ -496,7 +536,7 @@ fn update_water_material(
                 } else {
                     &wave_textures.texture_a
                 };
-                material.wave_texture = Some(current_texture.clone());
+                material.wave_texture = current_texture.clone();
             }
         }
     }
