@@ -6,7 +6,7 @@ use bevy::pbr::{MaterialPlugin, Material, wireframe::{WireframePlugin, Wireframe
 
 const WATER_GRID_LEN: usize = 64;
 const GRAVITY: f32 = 10.;
-const FRICTION: f32 = 1.5;
+const FRICTION: f32 = 0.6;
 
 fn main() {
     App::new()
@@ -99,14 +99,14 @@ fn water_sim(
         }
 
         // Print entire grid
-        println!("\n=== Water Height Grid ===");
-        for y in 0..WATER_GRID_LEN {
-            for x in 0..WATER_GRID_LEN {
-                print!("{:5.2} ", water_data.height[x][y]);
-            }
-            println!();
-        }
-        println!("========================\n");
+        // println!("\n=== Water Height Grid ===");
+        // for y in 0..WATER_GRID_LEN {
+        //     for x in 0..WATER_GRID_LEN {
+        //         print!("{:5.2} ", water_data.height[x][y]);
+        //     }
+        //     println!();
+        // }
+        // println!("========================\n");
     }
 }
 
@@ -116,32 +116,46 @@ fn handle_mouse_clicks(
     windows: Query<&Window>,
     mut water_query: Query<&mut WaterData>,
 ) {
-    if mouse_button.just_pressed(MouseButton::Left) {
+    if mouse_button.pressed(MouseButton::Left) {
         if let Ok((camera, camera_transform)) = camera_query.single() {
             if let Ok(window) = windows.single() {
                 if let Some(cursor_position) = window.cursor_position() {
-            // Create a ray from the camera through the cursor
-            if let Ok(ray) = camera.viewport_to_world(camera_transform, cursor_position) {
-                // Calculate intersection with water plane (y = 0)
-                let t = -ray.origin.y / ray.direction.y;
-                if t > 0.0 {
-                    let hit_point = ray.origin + ray.direction * t;
-                    
-                    // Convert world position to grid coordinates
-                    let grid_x = ((hit_point.x + 4.0) / 8.0 * WATER_GRID_LEN as f32) as usize;
-                    let grid_y = ((hit_point.z + 4.0) / 8.0 * WATER_GRID_LEN as f32) as usize;
-                    
-                    // Apply disturbance if within bounds
-                    if grid_x < WATER_GRID_LEN && grid_y < WATER_GRID_LEN {
-                        for mut water_data in water_query.iter_mut() {
-                            water_data.height[grid_x][grid_y] += 2.0;
-                            println!("Click at grid position: ({}, {})", grid_x, grid_y);
+                    // Create a ray from the camera through the cursor
+                    if let Ok(ray) = camera.viewport_to_world(camera_transform, cursor_position) {
+                        // Calculate intersection with water plane (y = 0)
+                        let t = -ray.origin.y / ray.direction.y;
+                        if t > 0.0 {
+                            let hit_point = ray.origin + ray.direction * t;
+                            
+                            // Convert world position to grid coordinates
+                            let grid_x = ((hit_point.x + 4.0) / 8.0 * WATER_GRID_LEN as f32) as usize;
+                            let grid_y = ((hit_point.z + 4.0) / 8.0 * WATER_GRID_LEN as f32) as usize;
+                            
+                            // Apply disturbance if within bounds
+                            if grid_x < WATER_GRID_LEN && grid_y < WATER_GRID_LEN {
+                                for mut water_data in water_query.iter_mut() {
+                                    // Only disturb if we moved to a new grid cell
+                                    let should_disturb = match water_data.last_disturbed_pos {
+                                        Some((last_x, last_y)) => last_x != grid_x || last_y != grid_y,
+                                        None => true,
+                                    };
+                                    
+                                    if should_disturb {
+                                        water_data.height[grid_x][grid_y] += 1.0;
+                                        water_data.last_disturbed_pos = Some((grid_x, grid_y));
+                                        println!("Disturbing at grid position: ({}, {})", grid_x, grid_y);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
-                }
-            }
+        }
+    } else {
+        // Reset last position when mouse is released
+        for mut water_data in water_query.iter_mut() {
+            water_data.last_disturbed_pos = None;
         }
     }
 }
@@ -288,6 +302,7 @@ struct WaterData {
     height: [[f32; WATER_GRID_LEN]; WATER_GRID_LEN],
     flow_x: [[f32; WATER_GRID_LEN]; WATER_GRID_LEN],
     flow_y: [[f32; WATER_GRID_LEN]; WATER_GRID_LEN],
+    last_disturbed_pos: Option<(usize, usize)>,
 }
 
 #[derive(Component)]
@@ -301,6 +316,7 @@ impl Default for WaterData {
             height: [[1.0; WATER_GRID_LEN]; WATER_GRID_LEN],
             flow_x: [[0.0; WATER_GRID_LEN]; WATER_GRID_LEN],
             flow_y: [[0.0; WATER_GRID_LEN]; WATER_GRID_LEN],
+            last_disturbed_pos: None,
         }
     }
 }
