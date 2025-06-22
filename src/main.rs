@@ -14,8 +14,52 @@ fn main() {
         .add_plugins(WireframePlugin::default())
         .add_plugins(MaterialPlugin::<WaterMaterial>::default())
         .add_systems(Startup, setup)
-        .add_systems(Update, water_sim)
+        .add_systems(Update, (water_sim, animate_water_mesh))
         .run();
+}
+
+fn animate_water_mesh(
+    time: Res<Time>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    query: Query<&WaterMesh>,
+) {
+    let elapsed = time.elapsed_secs();
+    
+    for water_mesh in query.iter() {
+        if let Some(mesh) = meshes.get_mut(&water_mesh.handle) {
+            if let Some(vertex_attr) = mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION) {
+                if let bevy::render::mesh::VertexAttributeValues::Float32x3(positions) = vertex_attr {
+                    let grid_size = 64;
+                    let size = 8.0;
+                    let step = size / grid_size as f32;
+                    
+                    // Only print once per second to avoid spam
+                    if elapsed as u32 % 60 == 0 && elapsed.fract() < 0.016 {
+                        println!("Animating water mesh at time: {:.2}", elapsed);
+                    }
+                    
+                    for (i, pos) in positions.iter_mut().enumerate() {
+                        let x = i % (grid_size + 1);
+                        let y = i / (grid_size + 1);
+                        
+                        let x_pos = (x as f32 * step) - (size / 2.0);
+                        let z_pos = (y as f32 * step) - (size / 2.0);
+                        
+                        // Animate with time-varying sine waves
+                        let freq1 = 0.5;
+                        let freq2 = 1.3;
+                        let freq3 = 2.1;
+                        
+                        let height = 0.1 * (x_pos * freq1 + elapsed * 2.0).sin() * (z_pos * freq1).cos()
+                                   + 0.05 * (x_pos * freq2 + elapsed * 3.0).sin() * (z_pos * freq2 + elapsed * 1.5).cos()
+                                   + 0.03 * (x_pos * freq3 - elapsed * 4.0).sin() * (z_pos * freq3 + elapsed * 2.5).cos();
+                        
+                        pos[1] = height;
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn water_sim(
@@ -114,7 +158,7 @@ fn create_water_mesh(size: f32, grid_size: u32) -> Mesh {
 
     let step = size / grid_size as f32;
 
-    // Generate vertices
+    // Generate vertices (flat initially, will be animated)
     for y in 0..vertices_per_side {
         for x in 0..vertices_per_side {
             let x_pos = (x as f32 * step) - (size / 2.0);
@@ -143,7 +187,7 @@ fn create_water_mesh(size: f32, grid_size: u32) -> Mesh {
         }
     }
 
-    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD)
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD)
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
         .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
         .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
@@ -194,13 +238,15 @@ fn setup(
     });
 
     // Water plane with 64x64 grid
+    let water_mesh_handle = meshes.add(create_water_mesh(8.0, 64));
     commands.spawn((
-        Mesh3d(meshes.add(create_water_mesh(8.0, 64))),
+        Mesh3d(water_mesh_handle.clone()),
         MeshMaterial3d(water_materials.add(WaterMaterial {
             color: Vec4::new(0.1, 0.3, 0.8, 0.2),
         })),
         Transform::default(),
         WaterData::default(),
+        WaterMesh { handle: water_mesh_handle },
         Wireframe,
     ));
 
@@ -245,6 +291,11 @@ struct WaterData {
     height: [[f32; WATER_GRID_LEN]; WATER_GRID_LEN],
     flow_x: [[f32; WATER_GRID_LEN]; WATER_GRID_LEN],
     flow_y: [[f32; WATER_GRID_LEN]; WATER_GRID_LEN],
+}
+
+#[derive(Component)]
+struct WaterMesh {
+    handle: Handle<Mesh>,
 }
 
 impl Default for WaterData {
