@@ -8,7 +8,20 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(MaterialPlugin::<WaterMaterial>::default())
         .add_systems(Startup, setup)
+        .add_systems(Update, water_sim)
         .run();
+}
+
+fn water_sim(
+    time: Res<Time>,
+    mut query: Query<&mut WaterData>
+) {
+    let delta_time = time.delta_secs();
+    println!("deltaTime: {}", delta_time);
+    
+    for mut water_data in query.iter_mut() {
+        water_data.grid[0][0] = delta_time;
+    }
 }
 
 fn setup(
@@ -61,6 +74,7 @@ fn setup(
             color: Vec4::new(0.1, 0.3, 0.8, 0.2),
         })),
         Transform::default(),
+        WaterData::default(),
     ));
 
     // Create stone walls
@@ -97,6 +111,19 @@ fn setup(
         MeshMaterial3d(wall_material.clone()),
         Transform::from_xyz(0.0, bottom_wall_y, 0.0),
     ));
+}
+
+#[derive(Component)]
+struct WaterData {
+    grid: [[f32; 64]; 64],
+}
+
+impl Default for WaterData {
+    fn default() -> Self {
+        Self {
+            grid: [[0.0; 64]; 64],
+        }
+    }
 }
 
 #[derive(Asset, TypePath, AsBindGroup, Clone)]
