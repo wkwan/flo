@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 use bevy::render::render_resource::*;
-use bevy::asset::{Asset};
-use bevy::pbr::{MaterialPlugin, Material};
+use bevy::render::mesh::{Indices, PrimitiveTopology};
+use bevy::asset::{Asset, RenderAssetUsages};
+use bevy::pbr::{MaterialPlugin, Material, wireframe::{WireframePlugin, Wireframe}};
 
 const WATER_GRID_LEN: usize = 64;
 const GRAVITY: f32 = 10.;
@@ -10,6 +11,7 @@ const FRICTION: f32 = 1.5;
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
+        .add_plugins(WireframePlugin::default())
         .add_plugins(MaterialPlugin::<WaterMaterial>::default())
         .add_systems(Startup, setup)
         .add_systems(Update, water_sim)
@@ -103,6 +105,51 @@ fn water_sim(
     }
 }
 
+fn create_water_mesh(size: f32, grid_size: u32) -> Mesh {
+    let vertices_per_side = grid_size + 1;
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+
+    let step = size / grid_size as f32;
+
+    // Generate vertices
+    for y in 0..vertices_per_side {
+        for x in 0..vertices_per_side {
+            let x_pos = (x as f32 * step) - (size / 2.0);
+            let z_pos = (y as f32 * step) - (size / 2.0);
+            
+            positions.push([x_pos, 0.0, z_pos]);
+            normals.push([0.0, 1.0, 0.0]);
+            uvs.push([x as f32 / grid_size as f32, y as f32 / grid_size as f32]);
+        }
+    }
+
+    // Generate indices for triangles
+    for y in 0..grid_size {
+        for x in 0..grid_size {
+            let base = y * vertices_per_side + x;
+            
+            // First triangle
+            indices.push(base);
+            indices.push(base + vertices_per_side);
+            indices.push(base + 1);
+            
+            // Second triangle
+            indices.push(base + 1);
+            indices.push(base + vertices_per_side);
+            indices.push(base + vertices_per_side + 1);
+        }
+    }
+
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_indices(Indices::U32(indices))
+}
+
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -146,14 +193,15 @@ fn setup(
         ..default()
     });
 
-    // Water plane
+    // Water plane with 64x64 grid
     commands.spawn((
-        Mesh3d(meshes.add(Plane3d::new(Vec3::Y, Vec2::splat(4.0)))),
+        Mesh3d(meshes.add(create_water_mesh(8.0, 64))),
         MeshMaterial3d(water_materials.add(WaterMaterial {
             color: Vec4::new(0.1, 0.3, 0.8, 0.2),
         })),
         Transform::default(),
         WaterData::default(),
+        Wireframe,
     ));
 
     // Create stone walls
