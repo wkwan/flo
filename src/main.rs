@@ -14,7 +14,7 @@ fn main() {
         .add_plugins(WireframePlugin::default())
         .add_plugins(MaterialPlugin::<WaterMaterial>::default())
         .add_systems(Startup, setup)
-        .add_systems(Update, (water_sim, animate_water_mesh))
+        .add_systems(Update, (water_sim, animate_water_mesh, handle_mouse_clicks))
         .run();
 }
 
@@ -118,34 +118,49 @@ fn water_sim(
             }
         }
 
-        // Print simulation data
-        println!("\n=== Water Simulation Data ===");
-        println!("Sample at (32, 32):");
-        println!("  Height: {:.4}", water_data.height[32][32]);
-        println!("  Flow X: {:.4}", water_data.flow_x[32][32]);
-        println!("  Flow Y: {:.4}", water_data.flow_y[32][32]);
-        
-        // Calculate averages
-        let mut avg_height = 0.0;
-        let mut avg_flow_x = 0.0;
-        let mut avg_flow_y = 0.0;
-        for x in 0..WATER_GRID_LEN {
-            for y in 0..WATER_GRID_LEN {
-                avg_height += water_data.height[x][y];
-                avg_flow_x += water_data.flow_x[x][y];
-                avg_flow_y += water_data.flow_y[x][y];
+        // Print entire grid
+        // println!("\n=== Water Height Grid ===");
+        // for y in 0..WATER_GRID_LEN {
+        //     for x in 0..WATER_GRID_LEN {
+        //         print!("{:5.2} ", water_data.height[x][y]);
+        //     }
+        //     println!();
+        // }
+        // println!("========================\n");
+    }
+}
+
+fn handle_mouse_clicks(
+    mouse_button: Res<ButtonInput<MouseButton>>,
+    camera_query: Query<(&Camera, &GlobalTransform)>,
+    windows: Query<&Window>,
+    mut water_query: Query<&mut WaterData>,
+) {
+    if mouse_button.just_pressed(MouseButton::Left) {
+        if let Ok((camera, camera_transform)) = camera_query.single() {
+            if let Ok(window) = windows.single() {
+                if let Some(cursor_position) = window.cursor_position() {
+            // Create a ray from the camera through the cursor
+            if let Ok(ray) = camera.viewport_to_world(camera_transform, cursor_position) {
+                // Calculate intersection with water plane (y = 0)
+                let t = -ray.origin.y / ray.direction.y;
+                if t > 0.0 {
+                    let hit_point = ray.origin + ray.direction * t;
+                    
+                    // Convert world position to grid coordinates
+                    let grid_x = ((hit_point.x + 4.0) / 8.0 * WATER_GRID_LEN as f32) as usize;
+                    let grid_y = ((hit_point.z + 4.0) / 8.0 * WATER_GRID_LEN as f32) as usize;
+                    
+                    if grid_x < WATER_GRID_LEN && grid_y < WATER_GRID_LEN {
+                        for mut water_data in water_query.iter_mut() {
+                            println!("Click at grid position: ({}, {})", grid_x, grid_y);
+                        }
+                    }
+                }
+            }
+                }
             }
         }
-        let total_cells = (WATER_GRID_LEN * WATER_GRID_LEN) as f32;
-        avg_height /= total_cells;
-        avg_flow_x /= total_cells;
-        avg_flow_y /= total_cells;
-        
-        println!("\nAverages:");
-        println!("  Height: {:.4}", avg_height);
-        println!("  Flow X: {:.4}", avg_flow_x);
-        println!("  Flow Y: {:.4}", avg_flow_y);
-        println!("============================\n");
     }
 }
 
