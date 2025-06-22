@@ -19,42 +19,22 @@ fn main() {
 }
 
 fn animate_water_mesh(
-    time: Res<Time>,
     mut meshes: ResMut<Assets<Mesh>>,
-    query: Query<&WaterMesh>,
+    query: Query<(&WaterMesh, &WaterData)>,
 ) {
-    let elapsed = time.elapsed_secs();
-    
-    for water_mesh in query.iter() {
+    for (water_mesh, water_data) in query.iter() {
         if let Some(mesh) = meshes.get_mut(&water_mesh.handle) {
             if let Some(vertex_attr) = mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION) {
                 if let bevy::render::mesh::VertexAttributeValues::Float32x3(positions) = vertex_attr {
-                    let grid_size = 64;
-                    let size = 8.0;
-                    let step = size / grid_size as f32;
-                    
-                    // Only print once per second to avoid spam
-                    if elapsed as u32 % 60 == 0 && elapsed.fract() < 0.016 {
-                        println!("Animating water mesh at time: {:.2}", elapsed);
-                    }
-                    
                     for (i, pos) in positions.iter_mut().enumerate() {
-                        let x = i % (grid_size + 1);
-                        let y = i / (grid_size + 1);
+                        let x = i % (WATER_GRID_LEN + 1);
+                        let y = i / (WATER_GRID_LEN + 1);
                         
-                        let x_pos = (x as f32 * step) - (size / 2.0);
-                        let z_pos = (y as f32 * step) - (size / 2.0);
+                        // Clamp to grid bounds and use water simulation height
+                        let grid_x = x.min(WATER_GRID_LEN - 1);
+                        let grid_y = y.min(WATER_GRID_LEN - 1);
                         
-                        // Animate with time-varying sine waves
-                        let freq1 = 0.5;
-                        let freq2 = 1.3;
-                        let freq3 = 2.1;
-                        
-                        let height = 0.1 * (x_pos * freq1 + elapsed * 2.0).sin() * (z_pos * freq1).cos()
-                                   + 0.05 * (x_pos * freq2 + elapsed * 3.0).sin() * (z_pos * freq2 + elapsed * 1.5).cos()
-                                   + 0.03 * (x_pos * freq3 - elapsed * 4.0).sin() * (z_pos * freq3 + elapsed * 2.5).cos();
-                        
-                        pos[1] = height;
+                        pos[1] = water_data.height[grid_x][grid_y] - 1.0;
                     }
                 }
             }
@@ -119,14 +99,14 @@ fn water_sim(
         }
 
         // Print entire grid
-        // println!("\n=== Water Height Grid ===");
-        // for y in 0..WATER_GRID_LEN {
-        //     for x in 0..WATER_GRID_LEN {
-        //         print!("{:5.2} ", water_data.height[x][y]);
-        //     }
-        //     println!();
-        // }
-        // println!("========================\n");
+        println!("\n=== Water Height Grid ===");
+        for y in 0..WATER_GRID_LEN {
+            for x in 0..WATER_GRID_LEN {
+                print!("{:5.2} ", water_data.height[x][y]);
+            }
+            println!();
+        }
+        println!("========================\n");
     }
 }
 
@@ -151,8 +131,10 @@ fn handle_mouse_clicks(
                     let grid_x = ((hit_point.x + 4.0) / 8.0 * WATER_GRID_LEN as f32) as usize;
                     let grid_y = ((hit_point.z + 4.0) / 8.0 * WATER_GRID_LEN as f32) as usize;
                     
+                    // Apply disturbance if within bounds
                     if grid_x < WATER_GRID_LEN && grid_y < WATER_GRID_LEN {
                         for mut water_data in water_query.iter_mut() {
+                            water_data.height[grid_x][grid_y] += 2.0;
                             println!("Click at grid position: ({}, {})", grid_x, grid_y);
                         }
                     }
