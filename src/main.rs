@@ -3,6 +3,10 @@ use bevy::render::render_resource::*;
 use bevy::asset::{Asset};
 use bevy::pbr::{MaterialPlugin, Material};
 
+const WATER_GRID_LEN: usize = 64;
+const GRAVITY: f32 = 10.;
+const FRICTION: f32 = 1.5;
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
@@ -17,10 +21,85 @@ fn water_sim(
     mut query: Query<&mut WaterData>
 ) {
     let delta_time = time.delta_secs();
-    println!("deltaTime: {}", delta_time);
     
     for mut water_data in query.iter_mut() {
-        water_data.grid[0][0] = delta_time;
+
+        for i in 0..WATER_GRID_LEN {
+            water_data.flow_x[0][i] = 0.;
+            water_data.flow_x[WATER_GRID_LEN-1][i] = 0.;
+            water_data.flow_y[i][0] = 0.;
+            water_data.flow_y[i][WATER_GRID_LEN-1] = 0.;
+        }
+
+        for x in 1..WATER_GRID_LEN {
+            for y in 1..WATER_GRID_LEN {
+                water_data.flow_x[x][y] = water_data.flow_x[x][y] * FRICTION.powf(delta_time) + (water_data.height[x-1][y] - water_data.height[x][y]) * GRAVITY * delta_time;
+                water_data.flow_y[x][y] = water_data.flow_y[x][y] * FRICTION.powf(delta_time) + (water_data.height[x][y-1] - water_data.height[x][y]) * GRAVITY * delta_time;
+            }
+        }
+
+        for x in 0..WATER_GRID_LEN-1 {
+            for y in 0..WATER_GRID_LEN-1 {
+                let mut total_outflow = 0.;
+                total_outflow += 0.0f32.max(-water_data.flow_x[x][y]);
+                total_outflow += 0.0f32.max(-water_data.flow_y[x][y]);
+                total_outflow += 0.0f32.max(water_data.flow_x[x+1][y]);
+                total_outflow += 0.0f32.max(water_data.flow_y[x][y+1]);
+
+                let max_outflow = water_data.height[x][y] / delta_time;
+
+                if total_outflow > 0. {
+                    let scale = 1.0f32.min(max_outflow / total_outflow);
+                    if water_data.flow_x[x][y] < 0. {
+                        water_data.flow_x[x][y] *= scale;
+                    } 
+                    if water_data.flow_y[x][y] < 0. {
+                        water_data.flow_y[x][y] *= scale;
+                    }
+                    if water_data.flow_x[x+1][y] > 0. {
+                        water_data.flow_x[x+1][y] *= scale
+                    }
+                    if water_data.flow_y[x][y+1] > 0. {
+                        water_data.flow_y[x][y+1] *= scale
+                    }
+                }
+            }
+        }
+
+        for x in 1..WATER_GRID_LEN-1 {
+            for y in 1..WATER_GRID_LEN-1 {
+                water_data.height[x][y] += (water_data.flow_x[x][y] + water_data.flow_y[x][y] - water_data.flow_x[x+1][y] - water_data.flow_y[x][y+1]) * delta_time;
+            }
+        }
+
+        // Print simulation data
+        println!("\n=== Water Simulation Data ===");
+        println!("Sample at (32, 32):");
+        println!("  Height: {:.4}", water_data.height[32][32]);
+        println!("  Flow X: {:.4}", water_data.flow_x[32][32]);
+        println!("  Flow Y: {:.4}", water_data.flow_y[32][32]);
+        
+        // Calculate averages
+        let mut avg_height = 0.0;
+        let mut avg_flow_x = 0.0;
+        let mut avg_flow_y = 0.0;
+        for x in 0..WATER_GRID_LEN {
+            for y in 0..WATER_GRID_LEN {
+                avg_height += water_data.height[x][y];
+                avg_flow_x += water_data.flow_x[x][y];
+                avg_flow_y += water_data.flow_y[x][y];
+            }
+        }
+        let total_cells = (WATER_GRID_LEN * WATER_GRID_LEN) as f32;
+        avg_height /= total_cells;
+        avg_flow_x /= total_cells;
+        avg_flow_y /= total_cells;
+        
+        println!("\nAverages:");
+        println!("  Height: {:.4}", avg_height);
+        println!("  Flow X: {:.4}", avg_flow_x);
+        println!("  Flow Y: {:.4}", avg_flow_y);
+        println!("============================\n");
     }
 }
 
@@ -115,13 +194,17 @@ fn setup(
 
 #[derive(Component)]
 struct WaterData {
-    grid: [[f32; 64]; 64],
+    height: [[f32; WATER_GRID_LEN]; WATER_GRID_LEN],
+    flow_x: [[f32; WATER_GRID_LEN]; WATER_GRID_LEN],
+    flow_y: [[f32; WATER_GRID_LEN]; WATER_GRID_LEN],
 }
 
 impl Default for WaterData {
     fn default() -> Self {
         Self {
-            grid: [[0.0; 64]; 64],
+            height: [[1.0; WATER_GRID_LEN]; WATER_GRID_LEN],
+            flow_x: [[0.0; WATER_GRID_LEN]; WATER_GRID_LEN],
+            flow_y: [[0.0; WATER_GRID_LEN]; WATER_GRID_LEN],
         }
     }
 }
