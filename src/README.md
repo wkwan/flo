@@ -1,0 +1,17 @@
+# Bevy Fluid Sim
+
+A barebones fluid simulator in Bevy (Rust/wgpu game engine) solving the shallow-water equations using the simplified pipe method. It's got lots of mistakes, but this is just one teeny feature in my game so I'll get back to it later!
+
+
+## Run demo
+
+```bash
+cargo run
+```
+
+## References
+https://lisyarus.github.io/blog/posts/simulating-water-over-terrain.html#section-virtual-pipes-method
+https://github.com/akauper/Shallow-Water
+
+## Misc
+If you're curious about the long-winded commit history and the [CLAUDE.md](CLAUDE.md) file: I was trying to vibe code this with Claude Code, got confused, and then started coding myself and using more specific prompts. I still like Claude Code, just not for everything 😆
