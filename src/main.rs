@@ -303,10 +303,10 @@ fn setup(
     mut water_materials: ResMut<Assets<WaterMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
-    // Camera - positioned like in Unity screenshot
+    // Camera - positioned to show all walls and water plane
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(3.0, 8.0, 8.0).looking_at(Vec3::new(0.0, 0.0, -2.0), Vec3::Y),
+        Transform::from_xyz(0.0, 10.0, 12.0).looking_at(Vec3::new(0.0, 0.0, -2.0), Vec3::Y),
     ));
 
     // Directional light
