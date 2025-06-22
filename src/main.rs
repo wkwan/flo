@@ -143,7 +143,7 @@ fn handle_mouse_clicks(
                                     if should_disturb {
                                         water_data.height[grid_x][grid_y] += 1.0;
                                         water_data.last_disturbed_pos = Some((grid_x, grid_y));
-                                        println!("Disturbing at grid position: ({}, {})", grid_x, grid_y);
+                                        // println!("Disturbing at grid position: ({}, {})", grid_x, grid_y);
                                     }
                                 }
                             }
@@ -158,6 +158,97 @@ fn handle_mouse_clicks(
             water_data.last_disturbed_pos = None;
         }
     }
+}
+
+fn create_scaled_uv_cuboid(width: f32, height: f32, depth: f32) -> Mesh {
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+    
+    let hw = width * 0.5;
+    let hh = height * 0.5;
+    let hd = depth * 0.5;
+    
+    // Calculate UV scales based on face dimensions
+    let front_back_u_scale = width / height.max(width).max(depth);
+    let front_back_v_scale = height / height.max(width).max(depth);
+    let left_right_u_scale = depth / height.max(width).max(depth);
+    let left_right_v_scale = height / height.max(width).max(depth);
+    let top_bottom_u_scale = width / height.max(width).max(depth);
+    let top_bottom_v_scale = depth / height.max(width).max(depth);
+    
+    // Front face (+Z)
+    positions.extend_from_slice(&[
+        [-hw, -hh, hd], [hw, -hh, hd], [hw, hh, hd], [-hw, hh, hd]
+    ]);
+    normals.extend_from_slice(&[[0.0, 0.0, 1.0]; 4]);
+    uvs.extend_from_slice(&[
+        [0.0, 0.0], [front_back_u_scale, 0.0], 
+        [front_back_u_scale, front_back_v_scale], [0.0, front_back_v_scale]
+    ]);
+    indices.extend_from_slice(&[0, 1, 2, 0, 2, 3]);
+    
+    // Back face (-Z)
+    positions.extend_from_slice(&[
+        [hw, -hh, -hd], [-hw, -hh, -hd], [-hw, hh, -hd], [hw, hh, -hd]
+    ]);
+    normals.extend_from_slice(&[[0.0, 0.0, -1.0]; 4]);
+    uvs.extend_from_slice(&[
+        [0.0, 0.0], [front_back_u_scale, 0.0], 
+        [front_back_u_scale, front_back_v_scale], [0.0, front_back_v_scale]
+    ]);
+    indices.extend_from_slice(&[4, 5, 6, 4, 6, 7]);
+    
+    // Left face (-X)
+    positions.extend_from_slice(&[
+        [-hw, -hh, -hd], [-hw, -hh, hd], [-hw, hh, hd], [-hw, hh, -hd]
+    ]);
+    normals.extend_from_slice(&[[-1.0, 0.0, 0.0]; 4]);
+    uvs.extend_from_slice(&[
+        [0.0, 0.0], [left_right_u_scale, 0.0], 
+        [left_right_u_scale, left_right_v_scale], [0.0, left_right_v_scale]
+    ]);
+    indices.extend_from_slice(&[8, 9, 10, 8, 10, 11]);
+    
+    // Right face (+X)
+    positions.extend_from_slice(&[
+        [hw, -hh, hd], [hw, -hh, -hd], [hw, hh, -hd], [hw, hh, hd]
+    ]);
+    normals.extend_from_slice(&[[1.0, 0.0, 0.0]; 4]);
+    uvs.extend_from_slice(&[
+        [0.0, 0.0], [left_right_u_scale, 0.0], 
+        [left_right_u_scale, left_right_v_scale], [0.0, left_right_v_scale]
+    ]);
+    indices.extend_from_slice(&[12, 13, 14, 12, 14, 15]);
+    
+    // Top face (+Y)
+    positions.extend_from_slice(&[
+        [-hw, hh, hd], [hw, hh, hd], [hw, hh, -hd], [-hw, hh, -hd]
+    ]);
+    normals.extend_from_slice(&[[0.0, 1.0, 0.0]; 4]);
+    uvs.extend_from_slice(&[
+        [0.0, 0.0], [top_bottom_u_scale, 0.0], 
+        [top_bottom_u_scale, top_bottom_v_scale], [0.0, top_bottom_v_scale]
+    ]);
+    indices.extend_from_slice(&[16, 17, 18, 16, 18, 19]);
+    
+    // Bottom face (-Y)
+    positions.extend_from_slice(&[
+        [-hw, -hh, -hd], [hw, -hh, -hd], [hw, -hh, hd], [-hw, -hh, hd]
+    ]);
+    normals.extend_from_slice(&[[0.0, -1.0, 0.0]; 4]);
+    uvs.extend_from_slice(&[
+        [0.0, 0.0], [top_bottom_u_scale, 0.0], 
+        [top_bottom_u_scale, top_bottom_v_scale], [0.0, top_bottom_v_scale]
+    ]);
+    indices.extend_from_slice(&[20, 21, 22, 20, 22, 23]);
+    
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_indices(Indices::U32(indices))
 }
 
 fn create_water_mesh(size: f32, grid_size: u32) -> Mesh {
@@ -269,21 +360,21 @@ fn setup(
 
     // Left wall (X = -half_water)
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(wall_thickness, wall_height, water_size))),
+        Mesh3d(meshes.add(create_scaled_uv_cuboid(wall_thickness, wall_height, water_size))),
         MeshMaterial3d(wall_material.clone()),
         Transform::from_xyz(-half_water - wall_thickness * 0.5, wall_height * 0.5 - 2.0, 0.0),
     ));
 
     // Right wall (X = +half_water)
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(wall_thickness, wall_height, water_size))),
+        Mesh3d(meshes.add(create_scaled_uv_cuboid(wall_thickness, wall_height, water_size))),
         MeshMaterial3d(wall_material.clone()),
         Transform::from_xyz(half_water + wall_thickness * 0.5, wall_height * 0.5 - 2.0, 0.0),
     ));
 
     // Back wall (Z = -half_water)
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(water_size + wall_thickness * 2.0, wall_height, wall_thickness))),
+        Mesh3d(meshes.add(create_scaled_uv_cuboid(water_size + wall_thickness * 2.0, wall_height, wall_thickness))),
         MeshMaterial3d(wall_material.clone()),
         Transform::from_xyz(0.0, wall_height * 0.5 - 2.0, -half_water - wall_thickness * 0.5),
     ));
@@ -291,7 +382,7 @@ fn setup(
     // Bottom wall
     let bottom_wall_y = -2.0;
     commands.spawn((
-        Mesh3d(meshes.add(Cuboid::new(water_size + wall_thickness * 2.0, wall_thickness, water_size + wall_thickness * 2.0))),
+        Mesh3d(meshes.add(create_scaled_uv_cuboid(water_size + wall_thickness * 2.0, wall_thickness, water_size + wall_thickness * 2.0))),
         MeshMaterial3d(wall_material.clone()),
         Transform::from_xyz(0.0, bottom_wall_y, 0.0),
     ));
