@@ -582,11 +582,11 @@ fn setup(
     let base_color_texture = asset_server.load("Stone Wall/Stone_Wall_basecolor.jpg");
     let normal_texture = asset_server.load("Stone Wall/Stone_Wall_normal.jpg");
     let roughness_texture = asset_server.load("Stone Wall/Stone_Wall_roughness.jpg");
-    let ao_texture = asset_server.load("Stone Wall/Stone_Wall_ambientOcclusion.jpg");
+    let ao_texture: Handle<Image> = asset_server.load("Stone Wall/Stone_Wall_ambientOcclusion.jpg");
 
     // Stone wall material with textures
     let wall_material = materials.add(StandardMaterial {
-        base_color: Color::srgb(0.8, 0.6, 0.4),
+        base_color: Color::srgb(0.9, 0.3, 0.0),
         base_color_texture: Some(base_color_texture),
         normal_map_texture: Some(normal_texture),
         metallic_roughness_texture: Some(roughness_texture),
