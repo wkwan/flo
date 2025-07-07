@@ -2,6 +2,7 @@
 
 #import bevy_pbr::forward_io::VertexOutput
 #import bevy_pbr::mesh_view_bindings::view
+#import "shaders/sky_common.wgsl"::get_sky_color
 
 // Lighting data passed from main.rs (currently as constants but available for use)
 const LIGHT_POSITION: vec3<f32> = vec3<f32>(20.0, 30.0, -20.0);
@@ -57,32 +58,6 @@ fn specular(n: vec3<f32>, l: vec3<f32>, e: vec3<f32>, s: f32) -> f32 {
     // dot with light gives cosine of angle between reflection and light
     // pow(..., s): higher s = smaller, sharper highlight
     return pow(max(dot(reflect(e, n), l), 0.0), s) * nrm;
-}
-
-// Get sky color based on direction (same as sky gradient shader)
-fn get_sky_color(direction: vec3<f32>) -> vec3<f32> {
-    let gradient_pos = (direction.y + 1.0) * 0.5; // 0 = looking down, 1 = looking up
-    
-    // Sunrise colors (matching sky_gradient.wgsl)
-    let horizon_color = vec3<f32>(1.0, 0.5, 0.2);      // Warm orange
-    let lower_sky_color = vec3<f32>(0.9, 0.3, 0.1);    // Deep orange/red
-    let upper_sky_color = vec3<f32>(0.4, 0.6, 0.9);    // Light blue
-    let zenith_color = vec3<f32>(0.2, 0.4, 0.8);       // Deeper blue
-    
-    var color: vec3<f32>;
-    
-    if gradient_pos < 0.4 {
-        let t = gradient_pos / 0.4;
-        color = mix(lower_sky_color, horizon_color, smoothstep(0.0, 1.0, t));
-    } else if gradient_pos < 0.6 {
-        let t = (gradient_pos - 0.4) / 0.2;
-        color = mix(horizon_color, upper_sky_color, smoothstep(0.0, 1.0, t));
-    } else {
-        let t = (gradient_pos - 0.6) / 0.4;
-        color = mix(upper_sky_color, zenith_color, smoothstep(0.0, 1.0, t));
-    }
-    
-    return color;
 }
 
 // Calculate water color with lighting and reflections
