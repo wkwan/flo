@@ -14,7 +14,7 @@ fn main() {
         .add_plugins(WireframePlugin::default())
         .add_plugins(MaterialPlugin::<WaterMaterial>::default())
         .add_systems(Startup, setup)
-        .add_systems(Update, (water_sim, animate_water_mesh, handle_mouse_clicks))
+        .add_systems(Update, (water_sim, animate_water_mesh, update_water_material, handle_mouse_clicks))
         .run();
 }
 
@@ -24,6 +24,7 @@ fn animate_water_mesh(
 ) {
     for (water_mesh, water_data) in query.iter() {
         if let Some(mesh) = meshes.get_mut(&water_mesh.handle) {
+            // Update positions
             if let Some(vertex_attr) = mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION) {
                 if let bevy::render::mesh::VertexAttributeValues::Float32x3(positions) = vertex_attr {
                     for (i, pos) in positions.iter_mut().enumerate() {
@@ -35,6 +36,54 @@ fn animate_water_mesh(
                         let grid_y = y.min(WATER_GRID_LEN - 1);
                         
                         pos[1] = water_data.height[grid_x][grid_y] - 1.0;
+                    }
+                }
+            }
+            
+            // Calculate and update normals based on height differences
+            // First, we need to get the positions to calculate normals
+            let positions_copy = if let Some(pos_attr) = mesh.attribute(Mesh::ATTRIBUTE_POSITION) {
+                if let bevy::render::mesh::VertexAttributeValues::Float32x3(positions) = pos_attr {
+                    Some(positions.clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+            
+            if let Some(positions) = positions_copy {
+                if let Some(norm_attr) = mesh.attribute_mut(Mesh::ATTRIBUTE_NORMAL) {
+                    if let bevy::render::mesh::VertexAttributeValues::Float32x3(normals) = norm_attr {
+                        let grid_size = WATER_GRID_LEN + 1;
+                        let grid_scale = 8.0 / WATER_GRID_LEN as f32; // Same scale as used for mesh creation
+                        
+                        for i in 0..normals.len() {
+                            let x = i % grid_size;
+                            let y = i / grid_size;
+                            
+                            // Calculate gradients using neighboring heights
+                            let mut dx = 0.0;
+                            let mut dy = 0.0;
+                            
+                            // X gradient
+                            if x > 0 && x < grid_size - 1 {
+                                let h_left = positions[i - 1][1];
+                                let h_right = positions[i + 1][1];
+                                dx = (h_right - h_left) / (2.0 * grid_scale);
+                            }
+                            
+                            // Y gradient
+                            if y > 0 && y < grid_size - 1 {
+                                let h_up = positions[i - grid_size][1];
+                                let h_down = positions[i + grid_size][1];
+                                dy = (h_down - h_up) / (2.0 * grid_scale);
+                            }
+                            
+                            // Normal = (-dx, 1, -dy) normalized
+                            let normal = Vec3::new(-dx, 1.0, -dy).normalize();
+                            normals[i] = [normal.x, normal.y, normal.z];
+                        }
                     }
                 }
             }
@@ -107,6 +156,37 @@ fn water_sim(
         //     println!();
         // }
         // println!("========================\n");
+    }
+}
+
+fn update_water_material(
+    time: Res<Time>,
+    camera_query: Query<&Transform, With<Camera3d>>,
+    windows: Query<&Window>,
+    mut water_materials: ResMut<Assets<WaterMaterial>>,
+    water_query: Query<&MeshMaterial3d<WaterMaterial>>,
+) {
+    // Get camera position
+    let camera_position = if let Ok(camera_transform) = camera_query.single() {
+        camera_transform.translation
+    } else {
+        Vec3::ZERO
+    };
+    
+    // Get window resolution
+    let resolution = if let Ok(window) = windows.single() {
+        Vec2::new(window.width(), window.height())
+    } else {
+        Vec2::new(1920.0, 1080.0)
+    };
+    
+    // Update all water materials
+    for material_handle in water_query.iter() {
+        if let Some(material) = water_materials.get_mut(&material_handle.0) {
+            material.time = time.elapsed_secs();
+            material.camera_position = camera_position;
+            material.resolution = resolution;
+        }
     }
 }
 
@@ -341,15 +421,14 @@ fn setup(
 
     // Water plane with 64x64 grid
     let water_mesh_handle = meshes.add(create_water_mesh(8.0, 64));
+    let water_material_handle = water_materials.add(WaterMaterial::new(Color::srgba(0.1, 0.3, 0.8, 0.8)));
     commands.spawn((
         Mesh3d(water_mesh_handle.clone()),
-        MeshMaterial3d(water_materials.add(WaterMaterial {
-            color: Vec4::new(0.1, 0.3, 0.8, 0.2),
-        })),
+        MeshMaterial3d(water_material_handle),
         Transform::default(),
         WaterData::default(),
         WaterMesh { handle: water_mesh_handle },
-        Wireframe,
+        // Wireframe, // enable wireframe for debugging
     ));
 
     // Create stone walls
@@ -416,6 +495,29 @@ impl Default for WaterData {
 struct WaterMaterial {
     #[uniform(0)]
     color: Vec4,
+    #[uniform(0)]
+    time: f32,
+    #[uniform(0)]
+    camera_position: Vec3,
+    #[uniform(0)]
+    resolution: Vec2,
+    #[uniform(0)]
+    water_level: f32,
+    #[uniform(0)]
+    grid_scale: f32,
+}
+
+impl WaterMaterial {
+    fn new(color: Color) -> Self {
+        Self {
+            color: Vec4::new(color.to_linear().red, color.to_linear().green, color.to_linear().blue, color.to_linear().alpha),
+            time: 0.0,
+            camera_position: Vec3::ZERO,
+            resolution: Vec2::new(1920.0, 1080.0), // Default resolution
+            water_level: 0.0,
+            grid_scale: 8.0 / WATER_GRID_LEN as f32, // Scale based on water size
+        }
+    }
 }
 
 impl Material for WaterMaterial {
