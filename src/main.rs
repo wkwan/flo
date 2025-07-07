@@ -13,8 +13,9 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugins(WireframePlugin::default())
         .add_plugins(MaterialPlugin::<WaterMaterial>::default())
+        .add_plugins(MaterialPlugin::<SkyMaterial>::default())
         .add_systems(Startup, setup)
-        .add_systems(Update, (water_sim, animate_water_mesh, update_water_material, handle_mouse_clicks))
+        .add_systems(Update, (water_sim, animate_water_mesh, update_water_material, update_sky_material, handle_mouse_clicks))
         .run();
 }
 
@@ -272,6 +273,26 @@ fn update_water_material(
     }
 }
 
+fn update_sky_material(
+    camera_query: Query<&Transform, With<Camera3d>>,
+    mut sky_materials: ResMut<Assets<SkyMaterial>>,
+    sky_query: Query<&MeshMaterial3d<SkyMaterial>, With<SkyDome>>,
+) {
+    // Get camera position
+    let camera_position = if let Ok(camera_transform) = camera_query.single() {
+        camera_transform.translation
+    } else {
+        Vec3::ZERO
+    };
+    
+    // Update all sky materials
+    for material_handle in sky_query.iter() {
+        if let Some(material) = sky_materials.get_mut(&material_handle.0) {
+            material.camera_position = camera_position;
+        }
+    }
+}
+
 fn handle_mouse_clicks(
     mouse_button: Res<ButtonInput<MouseButton>>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
@@ -325,6 +346,62 @@ fn handle_mouse_clicks(
             water_data.last_disturbed_pos = None;
         }
     }
+}
+
+fn create_sky_dome() -> Mesh {
+    // Create a large sphere that surrounds the scene
+    let radius = 100.0;
+    let rings = 16;
+    let sectors = 32;
+    
+    let mut positions = Vec::new();
+    let mut normals = Vec::new();
+    let mut uvs = Vec::new();
+    let mut indices = Vec::new();
+    
+    // Generate vertices
+    for i in 0..=rings {
+        let theta = i as f32 * std::f32::consts::PI / rings as f32;
+        let sin_theta = theta.sin();
+        let cos_theta = theta.cos();
+        
+        for j in 0..=sectors {
+            let phi = j as f32 * 2.0 * std::f32::consts::PI / sectors as f32;
+            let sin_phi = phi.sin();
+            let cos_phi = phi.cos();
+            
+            let x = radius * sin_theta * cos_phi;
+            let y = radius * cos_theta;
+            let z = radius * sin_theta * sin_phi;
+            
+            positions.push([x, y, z]);
+            // Normals point inward for a sky dome
+            normals.push([-x / radius, -y / radius, -z / radius]);
+            uvs.push([j as f32 / sectors as f32, i as f32 / rings as f32]);
+        }
+    }
+    
+    // Generate indices
+    for i in 0..rings {
+        for j in 0..sectors {
+            let first = i * (sectors + 1) + j;
+            let second = first + sectors + 1;
+            
+            indices.push(first as u32);
+            indices.push(second as u32);
+            indices.push((first + 1) as u32);
+            
+            indices.push(second as u32);
+            indices.push((second + 1) as u32);
+            indices.push((first + 1) as u32);
+        }
+    }
+    
+    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, normals)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+        .with_inserted_indices(Indices::U32(indices))
 }
 
 fn create_scaled_uv_cuboid(width: f32, height: f32, depth: f32) -> Mesh {
@@ -468,12 +545,23 @@ fn setup(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut water_materials: ResMut<Assets<WaterMaterial>>,
+    mut sky_materials: ResMut<Assets<SkyMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
     // Camera - positioned to show all walls and water plane
     commands.spawn((
         Camera3d::default(),
         Transform::from_xyz(0.0, 10.0, 12.0).looking_at(Vec3::new(0.0, 0.0, -2.0), Vec3::Y),
+    ));
+
+    // Sky dome with gradient - positioned far away
+    let sky_mesh_handle = meshes.add(create_sky_dome());
+    let sky_material_handle = sky_materials.add(SkyMaterial::new());
+    commands.spawn((
+        Mesh3d(sky_mesh_handle),
+        MeshMaterial3d(sky_material_handle),
+        Transform::from_scale(Vec3::splat(0.95)), // Make slightly smaller to avoid z-fighting
+        SkyDome,
     ));
 
     // Directional light
@@ -583,6 +671,9 @@ struct WaterMesh {
     handle: Handle<Mesh>,
 }
 
+#[derive(Component)]
+struct SkyDome;
+
 impl Default for WaterData {
     fn default() -> Self {
         Self {
@@ -631,5 +722,37 @@ impl Material for WaterMaterial {
     
     fn alpha_mode(&self) -> AlphaMode {
         AlphaMode::Blend
+    }
+}
+
+#[derive(Asset, TypePath, AsBindGroup, Clone)]
+struct SkyMaterial {
+    #[uniform(0)]
+    camera_position: Vec3,
+    #[uniform(0)]
+    _padding: f32, // Pad to 16 bytes for proper alignment
+}
+
+impl SkyMaterial {
+    fn new() -> Self {
+        Self {
+            camera_position: Vec3::ZERO,
+            _padding: 0.0,
+        }
+    }
+}
+
+impl Material for SkyMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/sky_gradient.wgsl".into()
+    }
+    
+    fn alpha_mode(&self) -> AlphaMode {
+        AlphaMode::Opaque
+    }
+    
+    // Ensure sky renders behind everything else  
+    fn depth_bias(&self) -> f32 {
+        1000.0 // Render far back
     }
 }
