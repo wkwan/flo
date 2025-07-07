@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 use bevy::asset::{Asset, RenderAssetUsages};
-use bevy::pbr::{MaterialPlugin, Material, wireframe::{WireframePlugin, Wireframe}};
+use bevy::pbr::{MaterialPlugin, Material, wireframe::WireframePlugin};
 
 const WATER_GRID_LEN: usize = 64;
 const GRAVITY: f32 = 10.;
@@ -106,20 +106,67 @@ fn water_sim(
             water_data.flow_y[i][WATER_GRID_LEN-1] = 0.;
         }
 
-        for x in 1..WATER_GRID_LEN {
-            for y in 1..WATER_GRID_LEN {
-                water_data.flow_x[x][y] = water_data.flow_x[x][y] * FRICTION.powf(delta_time) + (water_data.height[x-1][y] - water_data.height[x][y]) * GRAVITY * delta_time;
-                water_data.flow_y[x][y] = water_data.flow_y[x][y] * FRICTION.powf(delta_time) + (water_data.height[x][y-1] - water_data.height[x][y]) * GRAVITY * delta_time;
+        for x in 0..WATER_GRID_LEN {
+            for y in 0..WATER_GRID_LEN {
+                // Calculate flow_x (horizontal flow from left to right)
+                if x > 0 {
+                    let source_has_wall = water_data.wall_mask[x-1][y];
+                    let dest_has_wall = water_data.wall_mask[x][y];
+                    let height_diff = water_data.height[x-1][y] - water_data.height[x][y];
+                    
+                    // Allow flow only if both source and destination have no walls
+                    if !source_has_wall && !dest_has_wall {
+                        let new_flow = water_data.flow_x[x][y] * FRICTION.powf(delta_time) + 
+                            height_diff * GRAVITY * delta_time;
+                        
+                        water_data.flow_x[x][y] = new_flow;
+                    } else {
+                        // One or both cells have walls - no flow
+                        water_data.flow_x[x][y] = 0.0;
+                    }
+                } else {
+                    water_data.flow_x[x][y] = 0.0;
+                }
+                
+                // Calculate flow_y (vertical flow from top to bottom)
+                if y > 0 {
+                    let source_has_wall = water_data.wall_mask[x][y-1];
+                    let dest_has_wall = water_data.wall_mask[x][y];
+                    let height_diff = water_data.height[x][y-1] - water_data.height[x][y];
+                    
+                    // Allow flow only if both source and destination have no walls
+                    if !source_has_wall && !dest_has_wall {
+                        let new_flow = water_data.flow_y[x][y] * FRICTION.powf(delta_time) + 
+                            height_diff * GRAVITY * delta_time;
+                        
+                        water_data.flow_y[x][y] = new_flow;
+                    } else {
+                        // One or both cells have walls - no flow
+                        water_data.flow_y[x][y] = 0.0;
+                    }
+                } else {
+                    water_data.flow_y[x][y] = 0.0;
+                }
             }
         }
 
-        for x in 0..WATER_GRID_LEN-1 {
-            for y in 0..WATER_GRID_LEN-1 {
+        // Prevent water from flowing faster than available
+        for x in 0..WATER_GRID_LEN {
+            for y in 0..WATER_GRID_LEN {
+                if water_data.wall_mask[x][y] {
+                    continue;
+                }
+
                 let mut total_outflow = 0.;
                 total_outflow += 0.0f32.max(-water_data.flow_x[x][y]);
                 total_outflow += 0.0f32.max(-water_data.flow_y[x][y]);
-                total_outflow += 0.0f32.max(water_data.flow_x[x+1][y]);
-                total_outflow += 0.0f32.max(water_data.flow_y[x][y+1]);
+                
+                if x < WATER_GRID_LEN - 1 {
+                    total_outflow += 0.0f32.max(water_data.flow_x[x+1][y]);
+                }
+                if y < WATER_GRID_LEN - 1 {
+                    total_outflow += 0.0f32.max(water_data.flow_y[x][y+1]);
+                }
 
                 let max_outflow = water_data.height[x][y] / delta_time;
 
@@ -131,19 +178,54 @@ fn water_sim(
                     if water_data.flow_y[x][y] < 0. {
                         water_data.flow_y[x][y] *= scale;
                     }
-                    if water_data.flow_x[x+1][y] > 0. {
-                        water_data.flow_x[x+1][y] *= scale
+                    if x < WATER_GRID_LEN - 1 && water_data.flow_x[x+1][y] > 0. {
+                        water_data.flow_x[x+1][y] *= scale;
                     }
-                    if water_data.flow_y[x][y+1] > 0. {
-                        water_data.flow_y[x][y+1] *= scale
+                    if y < WATER_GRID_LEN - 1 && water_data.flow_y[x][y+1] > 0. {
+                        water_data.flow_y[x][y+1] *= scale;
                     }
                 }
             }
         }
 
-        for x in 1..WATER_GRID_LEN-1 {
-            for y in 1..WATER_GRID_LEN-1 {
-                water_data.height[x][y] += (water_data.flow_x[x][y] + water_data.flow_y[x][y] - water_data.flow_x[x+1][y] - water_data.flow_y[x][y+1]) * delta_time;
+        // Update heights based on flows, with proper wall handling
+        for x in 0..WATER_GRID_LEN {
+            for y in 0..WATER_GRID_LEN {
+                let mut height_change = 0.0;
+                
+                // Inflow from left (blocked if current cell has a wall)
+                let can_receive_from_left = x > 0 && !water_data.wall_mask[x-1][y] && !water_data.wall_mask[x][y];
+                if can_receive_from_left {
+                    height_change += water_data.flow_x[x][y];
+                }
+                
+                // Inflow from top (blocked if current cell has a wall)
+                let can_receive_from_top = y > 0 && !water_data.wall_mask[x][y-1] && !water_data.wall_mask[x][y];
+                if can_receive_from_top {
+                    height_change += water_data.flow_y[x][y];
+                } 
+                
+                // Outflow to right (allow outflow from walls, but not into walls)
+                let can_flow_right = x < WATER_GRID_LEN - 1 && !water_data.wall_mask[x+1][y];
+                if can_flow_right {
+                    height_change -= water_data.flow_x[x+1][y];
+                }
+                
+                // Outflow to bottom (allow outflow from walls, but not into walls)
+                let can_flow_bottom = y < WATER_GRID_LEN - 1 && !water_data.wall_mask[x][y+1];
+                if can_flow_bottom {
+                    height_change -= water_data.flow_y[x][y+1];
+                }
+                
+                water_data.height[x][y] += height_change * delta_time;
+                
+                // Ensure water height stays positive
+                water_data.height[x][y] = water_data.height[x][y].max(0.1);
+                
+                // Force wall cells to have minimal water height
+                if water_data.wall_mask[x][y] {
+                    water_data.height[x][y] = 0.1;
+                }
             }
         }
 
@@ -214,6 +296,11 @@ fn handle_mouse_clicks(
                             // Apply disturbance if within bounds
                             if grid_x < WATER_GRID_LEN && grid_y < WATER_GRID_LEN {
                                 for mut water_data in water_query.iter_mut() {
+                                    // Skip displacement for wall cells
+                                    if water_data.wall_mask[grid_x][grid_y] {
+                                        continue;
+                                    }
+                                    
                                     // Only disturb if we moved to a new grid cell
                                     let should_disturb = match water_data.last_disturbed_pos {
                                         Some((last_x, last_y)) => last_x != grid_x || last_y != grid_y,
@@ -422,11 +509,26 @@ fn setup(
     // Water plane with 64x64 grid
     let water_mesh_handle = meshes.add(create_water_mesh(8.0, 64));
     let water_material_handle = water_materials.add(WaterMaterial::new(Color::srgba(0.1, 0.3, 0.8, 0.8)));
+    
+    // Initialize water data with wall boundaries
+    let mut water_data = WaterData::default();
+    
+    // Set wall mask for boundary cells (edges of the water plane)
+    for i in 0..WATER_GRID_LEN {
+        // Top and bottom edges
+        water_data.wall_mask[i][0] = true;
+        water_data.wall_mask[i][WATER_GRID_LEN - 1] = true;
+        
+        // Left and right edges
+        water_data.wall_mask[0][i] = true;
+        water_data.wall_mask[WATER_GRID_LEN - 1][i] = true;
+    }
+    
     commands.spawn((
         Mesh3d(water_mesh_handle.clone()),
         MeshMaterial3d(water_material_handle),
         Transform::default(),
-        WaterData::default(),
+        water_data,
         WaterMesh { handle: water_mesh_handle },
         // Wireframe, // enable wireframe for debugging
     ));
@@ -473,6 +575,7 @@ struct WaterData {
     flow_x: [[f32; WATER_GRID_LEN]; WATER_GRID_LEN],
     flow_y: [[f32; WATER_GRID_LEN]; WATER_GRID_LEN],
     last_disturbed_pos: Option<(usize, usize)>,
+    wall_mask: [[bool; WATER_GRID_LEN]; WATER_GRID_LEN], // Track where walls are placed
 }
 
 #[derive(Component)]
@@ -487,6 +590,7 @@ impl Default for WaterData {
             flow_x: [[0.0; WATER_GRID_LEN]; WATER_GRID_LEN],
             flow_y: [[0.0; WATER_GRID_LEN]; WATER_GRID_LEN],
             last_disturbed_pos: None,
+            wall_mask: [[false; WATER_GRID_LEN]; WATER_GRID_LEN], // No walls initially
         }
     }
 }
