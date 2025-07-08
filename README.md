@@ -10,14 +10,14 @@ cargo run
 ```
 
 ## TODO
-### Short-Term
-1. Add performance benchmarks metrics and tests for larger fluid simulations.
+### Short-term
+1. Add performance benchmarks and tests for larger fluid simulations.
 2. Replace Bevy wgpu rendering pipeline with Vulkan rendering pipeline and measure performance.
 3. Move simulation to compute shader and measure performance.
 
 I think these 2 optimizations will allow for larger, more interactive, and more realistic fluid.
 
-### Long-Term
+### Long-term
 If we get significant performance improvements from Vulkan, we'll port our entire game (a serious commercial Steam release) to a custom Vulkan renderer. We'll open-source it here with more demos and benchmarks like the fluid simulator.
 
 ## References
