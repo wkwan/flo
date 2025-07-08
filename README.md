@@ -17,7 +17,7 @@ cargo run
 
 I think these 2 optimizations will allow for larger, more interactive, and more realistic fluid.
 
-## Long-Term
+### Long-Term
 If we get significant performance improvements from Vulkan, we'll port our entire game (a serious commercial Steam release) to a custom Vulkan renderer. We'll open-source it here with more demos and benchmarks like the fluid simulator.
 
 ## References
