@@ -1,5 +1,5 @@
 # Bevy Fluid Sim
-<video src="https://github.com/user-attachments/assets/de716ff3-7f27-43e4-9756-672ca969053f" controls="controls" style="max-width: 730px;">
+<video src="https://github.com/user-attachments/assets/ce8db8c1-f315-4d46-bf30-e0de866a0577" controls="controls" style="max-width: 730px;">
 </video>
 A barebones fluid simulator in Bevy (Rust/wgpu game engine) solving the shallow-water equations using the simplified pipe method. Rendering is done with WGSL raytracing. It's got lots of mistakes, but this is just one teeny feature in my game so I'll get back to it later!
 
