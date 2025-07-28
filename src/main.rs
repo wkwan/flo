@@ -4,6 +4,7 @@ use bevy::render::mesh::{Indices, PrimitiveTopology};
 use bevy::asset::{Asset, RenderAssetUsages};
 use bevy::pbr::{MaterialPlugin, Material, wireframe::WireframePlugin};
 use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, DiagnosticsStore};
+use bevy::window::{Window, WindowPlugin, PresentMode};
 
 const WATER_GRID_LEN: usize = 64;
 const GRAVITY: f32 = 10.;
@@ -11,7 +12,13 @@ const FRICTION: f32 = 0.6;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                present_mode: PresentMode::AutoNoVsync,
+                ..default()
+            }),
+            ..default()
+        }))
         .add_plugins(WireframePlugin::default())
         .add_plugins(MaterialPlugin::<WaterMaterial>::default())
         .add_plugins(MaterialPlugin::<SkyMaterial>::default())
