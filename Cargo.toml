@@ -1,15 +1,110 @@
 [package]
-name = "swe-bevy"
+name = "vulkan-bevy-renderer"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
+
+[[example]]
+name = "triangle"
+path = "examples/triangle.rs"
+
+[[example]]
+name = "cube"
+path = "examples/cube.rs"
+
+[[example]]
+name = "wireframe_cube"
+path = "examples/wireframe_cube.rs"
+
+
+[[example]]
+name = "grapes"
+path = "examples/grapes.rs"
+
+[[example]]
+name = "grapes_bevy"
+path = "examples/grapes_bevy.rs"
+
+[[example]]
+name = "grapes_1000"
+path = "examples/grapes_1000.rs"
+
+[[example]]
+name = "grapes_1000_bevy"
+path = "examples/grapes_1000_bevy.rs"
+
+[[example]]
+name = "fluid_sim_bevy"
+path = "examples/fluid_sim_bevy.rs"
+
+[[example]]
+name = "inspect_glb"
+path = "examples/inspect_glb.rs"
+
+
+[[example]]
+name = "aula"
+path = "examples/aula.rs"
+
+[[example]]
+name = "mannequin_animation"
+path = "examples/mannequin_animation.rs"
+
+[[example]]
+name = "mannequin_animation_bevy"
+path = "examples/mannequin_animation_bevy.rs"
+
+[[example]]
+name = "egui"
+path = "examples/egui.rs"
+
+[[example]]
+name = "triangle_bevy"
+path = "examples/triangle_bevy.rs"
+
+[[example]]
+name = "cube_bevy"
+path = "examples/cube_bevy.rs"
+
+[[example]]
+name = "wireframe_cube_bevy"
+path = "examples/wireframe_cube_bevy.rs"
+
+[[example]]
+name = "egui_bevy"
+path = "examples/egui_bevy.rs"
+
 
 [dependencies]
-bevy = { version = "0.16.1", features = ["dynamic_linking", "jpeg"] }
-
-# Enable a small amount of optimization in the dev profile.
-[profile.dev]
-opt-level = 1
-
-# Enable a large amount of optimization in the dev profile for dependencies.
-[profile.dev.package."*"]
-opt-level = 3
+anyhow = "1.0"
+ash = "0.38.0"
+ash-window = "0.13"
+bevy = { version = "0.16.1", features = [
+    "accesskit_unix", 
+    "x11",
+    "jpeg",
+    "png",
+    "bmp",
+    "webp",
+    "hdr",
+    "ktx2",
+    "zstd",
+    "serialize",
+    "tonemapping_luts",
+    "smaa_luts",
+    "default_font",
+    ] }
+raw-window-handle = "0.6"
+bytemuck = "1.23"
+memoffset = "0.9"
+futures-lite = "2.0"
+gltf = "1.4"
+image = "0.24"
+rand = "0.8"
+threadpool = "1.8"
+tri-mesh = "0.5.0"
+itertools = "0.13.0"
+fastrand = "2.3.0"
+tracing-subscriber = "0.3.19"
+egui = "0.32"
+egui-ash-renderer = "0.9"
+bevy_egui = "0.36"

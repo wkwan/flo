@@ -1,2 +1,18 @@
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=/usr/bin/mold", "-Zshare-generics=y"]
+
+[unstable]
+codegen-backend = true
+
+[profile.dev]
+codegen-backend = "cranelift"
+debug = 1
+
+[profile.dev.package."*"]
+codegen-backend = "llvm"
+
 [target.x86_64-pc-windows-msvc]
 linker = "rust-lld.exe"
+
+

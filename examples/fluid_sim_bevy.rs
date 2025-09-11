@@ -3,7 +3,7 @@ use bevy::render::render_resource::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 use bevy::asset::{Asset, RenderAssetUsages};
 use bevy::pbr::{MaterialPlugin, Material, wireframe::WireframePlugin};
-use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, DiagnosticsStore};
+use vulkan_bevy_renderer::fps_logger::FpsLogger;
 use bevy::window::{Window, WindowPlugin, PresentMode};
 
 const WATER_GRID_LEN: usize = 64;
@@ -14,7 +14,7 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                present_mode: PresentMode::AutoNoVsync,
+                present_mode: PresentMode::Immediate, // Disable vsync
                 ..default()
             }),
             ..default()
@@ -22,9 +22,8 @@ fn main() {
         .add_plugins(WireframePlugin::default())
         .add_plugins(MaterialPlugin::<WaterMaterial>::default())
         .add_plugins(MaterialPlugin::<SkyMaterial>::default())
-        .add_plugins(FrameTimeDiagnosticsPlugin::default())
-        .add_systems(Startup, (setup, setup_diagnostics_ui))
-        .add_systems(Update, (water_sim, animate_water_mesh, update_water_material, update_sky_material, handle_mouse_clicks, update_diagnostics_text))
+        .add_systems(Startup, setup)
+        .add_systems(Update, (water_sim, animate_water_mesh, update_water_material, update_sky_material, handle_mouse_clicks, log_fps))
         .run();
 }
 
@@ -766,39 +765,9 @@ impl Material for SkyMaterial {
     }
 }
 
-#[derive(Component)]
-struct DiagnosticsText;
-
-fn setup_diagnostics_ui(mut commands: Commands) {
-    commands.spawn((
-        Text::new(""),
-        Node {
-            position_type: PositionType::Absolute,
-            top: Val::Px(10.0),
-            right: Val::Px(10.0),
-            ..default()
-        },
-        DiagnosticsText,
-    ));
-}
-
-fn update_diagnostics_text(
-    diagnostics: Res<DiagnosticsStore>,
-    mut query: Query<&mut Text, With<DiagnosticsText>>,
+fn log_fps(
+    mut fps_logger: Local<FpsLogger>,
+    time: Res<Time>,
 ) {
-    for mut text in query.iter_mut() {
-        text.0.clear();
-        
-        if let Some(fps) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FPS) {
-            if let Some(value) = fps.smoothed() {
-                text.0.push_str(&format!("FPS: {:.1}\n", value));
-            }
-        }
-        
-        if let Some(frame_time) = diagnostics.get(&FrameTimeDiagnosticsPlugin::FRAME_TIME) {
-            if let Some(value) = frame_time.smoothed() {
-                text.0.push_str(&format!("Frame Time: {:.2}ms\n", value));
-            }
-        }
-    }
+    fps_logger.update(&time);
 }
