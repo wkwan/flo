@@ -4,8 +4,6 @@
 
 In it's current state, Flo isn't meant to be used out-of-the-box, so it's not published as a crate. If you're a gamedev who wants to use Rust + Vulkan for a 3D game, you can fork this repo, learn from it, and modify it for your use case.
 
-If you'd like to see this as an out-of-the-box game engine with a simple API, comprehensive feature-set, and tests, the best way to get there is to submit pull requests. The second best way is to [sponsor me](https://github.com/sponsors/wkwan) to work on it. 
-
 ## Motivation
 
 I like Bevy but I've replaced the WGPU renderer with a Vulkan/ash renderer because:
