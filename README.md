@@ -1,8 +1,10 @@
-# Flo: Vulkan/Ash 3D Renderer Integrated with Bevy Game Engine
+# Flo: Vulkan/Ash 3D Renderer Integrated with the Bevy Game Engine
 
 ## Warning
 
 In it's current state, Flo isn't meant to be used out-of-the-box, so it's not published as a crate. If you're a gamedev who wants to use Rust + Vulkan for a 3D game, you can fork this repo, learn from it, and modify it for your use case.
+
+PR's are much appreciated, but if not, please ⭐**star** the repo so I know you found it helpful!
 
 ## Motivation
 
@@ -10,10 +12,10 @@ I like Bevy but I've replaced the WGPU renderer with a Vulkan/ash renderer becau
 
 - I want it fast and beautiful (hardware raytracing + lower CPU/GPU overhead)
 - I don't care about exporting to web
-- Ash is up-to-date with the Vulkan API, while WGPU API is unstable and doesn't have the latest Vulkan features
+- Ash is up-to-date with Vulkan, while WGPU is unstable and doesn't have the latest Vulkan features
 - Tiny Glade is a successful example using Bevy + Vulkan/ash, no other comparable game using the default Bevy renderer
 
-My [colony simulation game](https://www.youtube.com/watch?v=xsxvuzM5Oyg), which is the main use case for the engine, does lots of real-time procedural generation/animation and raytracing. I'm running into performance issues with my prototype and I've identified the renderer as the bottleneck. So I want to optimize the renderer to let players in my game can do and see crazier things.
+My [colony simulation game](https://www.youtube.com/watch?v=xsxvuzM5Oyg), which is the main use case for the engine, does lots of real-time procedural generation/animation and raytracing. I'm running into performance issues with my prototype and I've identified the renderer as the bottleneck. So I want to optimize the renderer to let players in my game do crazier things.
 
 ## Setup
 
@@ -22,7 +24,7 @@ My [colony simulation game](https://www.youtube.com/watch?v=xsxvuzM5Oyg), which 
     If you choose not to install the alternative linker specified in [.cargo/config.toml](.cargo/config.toml) (mold for Linux, lld for Windows), then delete [.cargo/config.toml](.cargo/config.toml). This might make compilation much slower.
 
 2. Install Vulkan SDK
-3. Install glslc or glslangValidator to compile shaders
+3. Install glslc or glslangValidator to compile shaders (only needed if you're modifying the shaders)
 
 #### For Windows Users Only:
 
@@ -34,6 +36,8 @@ linker = "rust-lld.exe"
 ```
 
 ## Examples
+
+You can watch these examples running on the Steam Deck in [this video](https://www.youtube.com/watch?v=y1m30oOksmI).
 
 | Example | Command | Description | FPS Benchmark on Steam Deck LCD (averaged over 10s) |
 |---------|---------|-------------| --------------------------------- |
