@@ -39,7 +39,7 @@ linker = "rust-lld.exe"
 
 You can watch these examples running on the Steam Deck in [this video](https://www.youtube.com/watch?v=y1m30oOksmI).  
 
-Flo is simpler,uglier, and harder to to use than the wgpu renderer, so these benchmarks aren’t a fair comparison. However, the FPS loss from improving this project will partially be offset by making the pipeline multi-threaded. It's currently single-threaded for simplicity.
+Flo is simpler, uglier, and harder to to use than the wgpu renderer, so these benchmarks aren’t a fair comparison. However, the FPS loss from improving this project will partially be offset by making the pipeline multi-threaded. It's currently single-threaded for simplicity.
 
 | Example | Command | Description | FPS Benchmark on Steam Deck LCD (averaged over 10s) |
 |---------|---------|-------------| --------------------------------- |
